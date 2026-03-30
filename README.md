@@ -218,7 +218,7 @@ If the animation is short, you can use ImageMagick (or equivalent software) to c
 - The `spread-out` stagger automatically expands the frame count for that
   segment: `frames_per_step + delay × (n_objects - 1)`.
 
-- The end of the trace file includes lines that can be copied into a shell script so that the `Meld` application (available on Linux) can be used to compare changes between sequential keyframe SVG files. This is useful for copying specific changes from one keyframe to another without involving Inkscape. Also can be useful for troubleshooting animations that do no work as expected.
+- The end of the trace file includes lines that can be copied into a shell script so the `Meld` application (available on Linux) can be used to compare changes between sequential keyframe SVG files. This is useful for copying specific changes from one keyframe to another without involving Inkscape. Also these commands can be useful for troubleshooting animations that do no work as expected.
 
 ---
 
