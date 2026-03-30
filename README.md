@@ -20,7 +20,7 @@ g++ -std=c++17 -O2 -o svg_animation_tool svg_animation_tool.cpp
 
 Open Inkscape, draw a rectangle and triangle, save the drawing as `keyframe_start.svg`, move each object to a very different location, save that modified version as `keyframe_end.svg`, then close Inkscape.
 
-Type this simple script text into a file named `script_animation.txt`:
+Type this text into a file named `script_animation.txt`:
 
 ```
 keyframe_start.svg
@@ -34,10 +34,10 @@ Run it:
 ./svg_animation_tool script_animation.txt
 ```
 
-This writes 30 SVG frames to `frames_svg/frame_0000.svg` through
+This command writes 30 SVG frames to `frames_svg/frame_0000.svg` through
 `frames_svg/frame_0029.svg`.
 
-Open file `frame_0014.svg` in Inkscape to verify the objects are halfway between their starting and ending positions.
+Within the `frames_svg` directory, open file `frame_0014.svg` in Inkscape to verify the objects are halfway between their starting and ending positions.
 
 Instructions below explain how to batch-convert the SVG files into PNG files (using Inkscape in its command-line mode), and how to convert the PNG files into a video using a video editor.
 
@@ -99,8 +99,8 @@ The joined caption (or narration) category is useful while developing the narrat
 
 | Token | Description |
 |---|---|
-| `file.svg` | Register a keyframe SVG. The two most recently registered files are used by the next `animate` directive. The `.svg` extension must be included. The `file` portion is expected to be named in a way that is meaningful for that part of the animation. |
-| `animate` | Interpolate between the last two keyframes, writing `frames_per_step` frames. Consecutive `animate` calls share their boundary frame. This directive is what activates animation processing. |
+| `file.svg` | Specify the next keyframe SVG file. The two most recently specified keyframe files are used by the next `animate` directive. The `.svg` extension must be included. The `file` portion is expected to be named in a way that is meaningful for that part of the animation. |
+| `animate` | Interpolate between the two most-recently specified keyframes, writing `frames_per_step` frames. Consecutive `animate` calls share their boundary frame. This directive is what activates animation processing. |
 | `freeze N` | Write N identical copies of the most recent keyframe. |
 
 ### Object and motion directives
@@ -152,7 +152,7 @@ animate
 freeze 5
 ```
 
-In this example, four ballots move with a 2-frame stagger between each ballot, and their motion follows a smooth up-then-down arc path.
+In this example, during the second `animate` segment, four ballots move with a 2-frame stagger between each ballot, and their motion follows a smooth up-then-down arc path.
 
 ---
 
@@ -171,6 +171,8 @@ Progress is printed to `stdout`. Errors (file not found, etc.) go to `stderr`.
 ## Converting frames to video
 
 **Step 1 — Convert SVG frames to PNG using Inkscape:**
+
+Include these Linux commands in the shell script that runs the animation.
 
 ```bash
 mkdir -p frames_png
@@ -215,6 +217,8 @@ If the animation is short, you can use ImageMagick (or equivalent software) to c
 
 - The `spread-out` stagger automatically expands the frame count for that
   segment: `frames_per_step + delay × (n_objects - 1)`.
+
+- The end of the trace file includes lines that can be copied into a shell script so that the `Meld` application (available on Linux) can be used to compare changes between sequential keyframe SVG files. This is useful for copying specific changes from one keyframe to another without involving Inkscape. Also can be useful for troubleshooting animations that do no work as expected.
 
 ---
 
