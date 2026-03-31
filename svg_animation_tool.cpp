@@ -760,7 +760,7 @@ std::string formatValue(double vi,
 {
     bool srcAisInt = (srcA.find('.') == std::string::npos);
     bool srcBisInt = (srcB.find('.') == std::string::npos);
-    if (srcAisInt && srcBisInt && std::fabs(vi - std::round(vi)) < 1e-9)
+    if (srcAisInt && srcBisInt && std::fabs(vi - std::round(vi)) < 1e-9 && std::fabs(vi) > 1e-9 && std::fabs(vi - 1.0) > 1e-9)
         return std::to_string((long long)std::llround(vi));
     const std::string& decSrc = !srcAisInt ? srcA : srcB;
     size_t dotPos    = decSrc.find('.');
