@@ -45,24 +45,57 @@ Instructions below explain how to batch-convert the SVG files into PNG files (us
 
 ## How it works
 
-Each keyframe is an SVG file you create in Inkscape. The tool compares pairs
-of keyframes by element `id`, finds numeric attribute values that changed
-(positions, sizes, rotations, decimal opacity, etc.), and **smoothly interpolates**
-between them frame by frame using smootherstep easing.
+Each keyframe is an SVG file you create in Inkscape.
 
-Each animated object must share the **same matching `id` name** between the two keyframe files. The `id` names automatically match if one of the two keyframe files was copied from the other and then modified (using the object's handles) in Inkscape.
+All SVG files referenced in a script must be in the **current working directory**. No path specifiers can precede the filename.  The filename in the script must include the `.svg` extension.
 
-Before you modify a group of objects (or one object) using the `transform` dialog box, first **create a new group**. This step creates an `id` name for this group. Then your keyframe files will have the same group `id` name.
+This tool reads the script-specified SVG files and does this processing:
 
-Objects **can fade in**, or **fade out**, by changing their opacity between `0.0` (hidden) and `1.0` (fully visible). These objects can be inserted or deleted while they are hidden. (If an object does not have an `opacity` attribute, you may be able to add it using Inkscape's `XML editor`.)
+- Compares pairs of keyframes by object `id`.
 
-Objects that move into view from off-screen, and then move off-screen, can be **inserted** and **deleted** while they are off-screen in other non-involved keyframes.
+- Finds **numeric attribute values** that change between the two keyframes. These changes can include positions, sizes, rotations, opacity, etc.
 
-At the **midpoint** in each animation segment, the non-animated objects switch from the keyframe A versions to the keyframe B versions. This can affect the SVG stacking order (which element appears on top of which) but does not interrupt the animation. Objects will appear or disappear at this midpoint if the objects are in one keyframe but not the other.
+- Generates new SVG files in which the numeric attributes for those objects **smoothly change** from frame to frame using **smootherstep** easing.
 
-When you want to see an object's starting appearance and ending appearance in Inkscape at the same time (such as overlapped, or in different positions), you can use Inkscape's `object properties` tool or `XML editor` tool to change their `id` names. This animation technique also involves hiding and revealing just one of the objects in the involved keyframes. Also, both objects must be **of the same type** and only differ by number values.
+Each animated object must share the **same matching `id` name** between the two keyframe files. Objects that look the same, or similar, between keyframes are not recognized as the same if they have different `id` names.
 
-A group of objects that have the same `id` name in two successive keyframe files can be animated as a group. Objects within these groups also can be animated if their `id` names match between the two keyframes. This combination allows zooming or panning at the same time that objects are moving relative to other objects in the group.
+---
+
+## Tips
+
+- The 'id' object name can be the default identifier assigned by Inkscape. These objects will be animated if they appear in both keyframes and have a numeric difference.
+
+- The `id` names automatically match if one of the two keyframe files was copied from the other and then modified in Inkscape using the object's handles.
+
+- Before you modify a group of objects (or one object) using the `transform` dialog box, first **create a new group**. This step creates an `id` name for this group. Then your keyframe files will have the same group `id` name.
+
+- It can be useful to **supply your own `id` names** using Inkscape's `object properties` tool or `XML editor` tool. The output trace file includes additional information for objects that have `id` names that do not match Inkscape's default naming conventions (such as `rect1234`).
+
+- If your animation has different drawings in **different layers**, and you reveal a different layer in each keyframe, use the `freeze` directive for each keyframe. The `animate` directive does not work with this kind of animation because Inkscape ensures an SVG file does not have more than one object with the same `id` name.
+
+- Some animations may require hiding an object (or group of objects) in one keyframe and showing the object in the other keyframe. This technique requires that both objects must be **of the same type** and only differ by numeric values.
+
+- Objects **can fade in**, or **fade out**, by changing their opacity between `0` (hidden) and `1` (fully visible). These objects must be inserted into a keyframe before they fade in, and cannot be deleted until after they have faded out.
+
+- If an object does not have an **opacity** attribute, you may be able to add it using Inkscape's `XML editor`.
+
+- Objects that move into view from off-screen, and later move off-screen, can be **inserted** and **deleted** while they are off-screen in other non-involved keyframes.
+
+- At the **midpoint** in each animation segment, the non-animated objects switch from the keyframe **A** (*before*) version to the keyframe **B** (*after*) version. This switching can affect the SVG stacking order (which element appears on top of which) but does not interrupt the animation.
+
+- If an object appears or disappears at the **midpoint** of an animation, probably the object is in one keyframe but not the other.
+
+- When you are editing a keyframe in Inkscape and want to see both the object's **starting appearance** and **ending appearance** (such as overlapped, or in different positions), you can use Inkscape's `object properties` tool or `XML editor` tool to change their `id` names. The `id` of the starting version in one keyframe must match the `id` of the ending version in the other keyframe.
+
+- A group of objects that have the same `id` name in two successive keyframe files can be animated as a group. Objects within these groups also can be animated if their `id` names match between the two keyframes. This combination allows zooming or panning at the same time that objects are moving relative to other objects in the group.
+
+- `object-ids` directives (explained below) can appear multiple times in a script with different lists for different directives. Each directive (`arc-height`, `spread-out`, etc.) captures a snapshot of the most recent list at the time it appears.
+
+- `arc-degrees` and `frames-per-step` directives (explained below) persist across `animate` calls until changed again.
+
+- The `spread-out` stagger (explained below) automatically expands the frame count for that segment. The full frame count can be calulated as `frames_per_step + (delay × (n_objects - 1))`.
+
+- The end of the summary file includes `Meld diff commands` that you can copy into a Linux shell script to conveniently compare changes between sequential keyframe SVG files. Also, at this time you can copy specific changes from one keyframe to another keyframe without needing to use Inkscape, and without needing to position or orient the objects to match, which is needed when those objects are not being animated. Using the Meld application also can help you troubleshoot animations that do not work as expected.
 
 ---
 
@@ -193,34 +226,6 @@ If the animation is short, you can use ImageMagick (or equivalent software) to c
 
 ---
 
-## Tips
-
-- All SVG files referenced in a script must be in the **current working
-  directory**. No path separators are allowed in filenames.
-
-- The 'id' object name can be the default identifier assigned by Inkscape.
-  These objects will be animated if they appear in both keyframes and
-  have a numeric difference. However, the information in the output trace file
-  gives additional useful information for objects have ids that do not match
-  Inkscape's default naming conventions.
-
-- Opacity is animated if the beginning and ending numbers are both decimal,
-  usually 0.0 and 1.0 for fade-in and 1.0 and 0.0 for fade-out. If either number
-  is 0 or 1 (without a decimal point) that opacity is not animated.
-
-- `object-ids` can appear multiple times in a script with different lists for
-  different directives. Each directive (`arc-height`, `spread-out`, etc.)
-  captures a snapshot of the most recent list at the time it appears.
-
-- `arc-degrees` and `frames-per-step` persist across `animate` calls until
-  changed again.
-
-- The `spread-out` stagger automatically expands the frame count for that
-  segment: `frames_per_step + delay × (n_objects - 1)`.
-
-- The end of the trace file includes lines that can be copied into a shell script so the `Meld` application (available on Linux) can be used to compare changes between sequential keyframe SVG files. This is useful for copying specific changes from one keyframe to another without involving Inkscape. Also these commands can be useful for troubleshooting animations that do not work as expected.
-
----
 
 ## License
 
