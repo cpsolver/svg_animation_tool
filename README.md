@@ -69,15 +69,21 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - Before you modify a group of objects (or one object) using the `transform` dialog box, first **create a new group**. This step creates an `id` name for this group. Then your keyframe files will have the same group `id` name.
 
-- It can be useful to **supply your own `id` names** using Inkscape's `object properties` tool or `XML editor` tool. The output trace file includes additional information for objects that have `id` names that do not match Inkscape's default naming conventions (such as `rect1234`).
+- It can be useful to **supply your own `id` names** using Inkscape's `object properties` tool or the `XML editor` tool. The output trace file includes additional information for objects that have `id` names that do not match Inkscape's default naming conventions (such as `rect1234`).
+
+- In the **Layers** window area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers becomes important as the number of objects increases.
 
 - If your animation has different drawings in **different layers**, and you reveal a different layer in each keyframe, use the `freeze` directive for each keyframe. The `animate` directive does not work with this kind of animation because Inkscape ensures an SVG file does not have more than one object with the same `id` name.
+
+- When Inkscape does not show layer info in the **Layers** area (which is a software bug in Inkscape), switch to a different application, then switch back to Inkscape. Typically the layer info appears when you switch back to Inkscape.
+
+- You can change an object's **ID** in the **Object Properties** dialog area. Press the **Enter** key for the change to take effect.
 
 - Some animations may require hiding an object (or group of objects) in one keyframe and showing the object in the other keyframe. This technique requires that both objects must be **of the same type** and only differ by numeric values.
 
 - Objects **can fade in**, or **fade out**, by changing their opacity between `0` (hidden) and `1` (fully visible). These objects must be inserted into a keyframe before they fade in, and cannot be deleted until after they have faded out.
 
-- If an object does not have an **opacity** attribute, you may be able to add it using Inkscape's `XML editor`.
+- If an object does not have an **opacity** attribute, you may be able to add it using Inkscape's `XML editor`. (Or you can try changing the transparency in the fill and stroke dialog area, although this approacy may cause unexpected results.)
 
 - Objects that move into view from off-screen, and later move off-screen, can be **inserted** and **deleted** while they are off-screen in other non-involved keyframes.
 

@@ -1510,6 +1510,8 @@ int main(int argc, char* argv[]) {
                << "  done\n\n"
                << "Then import the frames_png/ image sequence into Shotcut\n"
                << "(or another video editor) to assemble the final movie.\n"
+               << "Source code and documentation at:\n"
+               << "https://github.com/cpsolver/svg_animation_tool\n"
                << "══════════════════════════════════════════════════\n";
     summary    << "\n" << doneMsg << "\n";
 
