@@ -63,23 +63,29 @@ Each animated object must share the **same matching `id` name** between the two 
 
 ## Tips
 
-- The 'id' object name can be the default identifier assigned by Inkscape. These objects will be animated if they appear in both keyframes and have a numeric difference.
+- An object in two time-adjacent keyframes will be animated if the object appears in both keyframes, and the `id` name is the **same** in both files, and the object has a numeric difference in one or more of its values (X position, Y position, width, height, opacity, etc.).
 
-- The `id` names automatically match if one of the two keyframe files was copied from the other and then modified in Inkscape using the object's handles.
+- The same object in two keyframes must be **of the same type**. A shape that looks similar but has a different number of nodes (points) is not the same type of object.
 
-- Before you modify a group of objects (or one object) using the `transform` dialog box, first **create a new group**. This step creates an `id` name for this group. Then your keyframe files will have the same group `id` name.
+- The 'id' object name can be the **default** identifier assigned by Inkscape, but the ids must match between the two keyframe files. The `id` names automatically match if one of the two keyframe files was copied from the other and then modified in Inkscape using the object's handles.
 
-- It can be useful to **supply your own `id` names** using Inkscape's `object properties` tool or the `XML editor` tool. The output trace file includes additional information for objects that have `id` names that do not match Inkscape's default naming conventions (such as `rect1234`).
+- Before you modify a group of objects (or one object) using the `transform` dialog box, first **create a new group**. This step creates an `id` name for this group, and all your transformations (scale, rotate, move, etc.) will be associated with this group `id` name.
 
-- In the **Layers** window area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers becomes important as the number of objects increases.
+- A group of objects that have the same `id` name in two successive keyframe files can be animated as a group. Objects within these groups also can be animated if their `id` names match between the two keyframes. This combination allows **zooming** or **panning** at the same time that objects are moving relative to other objects in the group.
 
-- If your animation has different drawings in **different layers**, and you reveal a different layer in each keyframe, use the `freeze` directive for each keyframe. The `animate` directive does not work with this kind of animation because Inkscape ensures an SVG file does not have more than one object with the same `id` name.
+- It is useful to **supply your own `id` names** using Inkscape's `object properties` tool or the `XML editor` tool. The output trace file includes additional information for these objects. In contrast, `id` names that match Inkscape's default naming conventions (such as `rect1234`) are not listed in that trace information.
 
-- When Inkscape does not show layer info in the **Layers** area (which is a software bug in Inkscape), switch to a different application, then switch back to Inkscape. Typically the layer info appears when you switch back to Inkscape.
+- In the **Layers** tool area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers, and locking the ones you don't want to change, becomes important as the number of objects increases.
 
-- You can change an object's **ID** in the **Object Properties** dialog area. Press the **Enter** key for the change to take effect.
+- If your animation has different drawings in **different layers**, and your plan was to reveal a different layer, one at a time, the `animate` directive does not work because Inkscape ensures an SVG file does not have more than one object with the same `id` name. This kind of animation can be inserted as a short sequence, but each layer must be saved to a different keyframe file (using the view layer icons to control which layer is visible in each file). In the script, use the `freeze` directive for each of these different keyframe files.
 
-- Some animations may require hiding an object (or group of objects) in one keyframe and showing the object in the other keyframe. This technique requires that both objects must be **of the same type** and only differ by numeric values.
+- Inkscape has a software bug that can fail to show layer info in the **Layers** area when a new file is opened. As a workaround, when the layer info is missing, switch to a different application, then switch back to Inkscape, and the layer info should appear.
+
+- You can change an object's **ID** in the **Object Properties** dialog area. Press the **Enter** key after typing the new name.
+
+- You can also change an object's name using the **XML editor** but it is less user-friendly.
+
+- Some animations may require hiding an object (or group of objects) in one keyframe and showing the object in other keyframe. Set the `opacity` of the object to `0` (zero) in the keyframe where it is hidden.
 
 - Objects **can fade in**, or **fade out**, by changing their opacity between `0` (hidden) and `1` (fully visible). These objects must be inserted into a keyframe before they fade in, and cannot be deleted until after they have faded out.
 
@@ -93,7 +99,7 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - When you are editing a keyframe in Inkscape and want to see both the object's **starting appearance** and **ending appearance** (such as overlapped, or in different positions), you can use Inkscape's `object properties` tool or `XML editor` tool to change their `id` names. The `id` of the starting version in one keyframe must match the `id` of the ending version in the other keyframe.
 
-- A group of objects that have the same `id` name in two successive keyframe files can be animated as a group. Objects within these groups also can be animated if their `id` names match between the two keyframes. This combination allows zooming or panning at the same time that objects are moving relative to other objects in the group.
+- When you want to align an object in one keyframe file with the same object in another keyframe file, consider using the `X`, `Y`, `W`, and `H` boxes that appear at the top of Inkscape when the object is selected. You can copy one of these numeric values in one file and insert it into the other file. Or you can specify the same simple number (such as 600 instead of 609.013) for both files.
 
 - `object-ids` directives (explained below) can appear multiple times in a script with different lists for different directives. Each directive (`arc-height`, `spread-out`, etc.) captures a snapshot of the most recent list at the time it appears.
 
