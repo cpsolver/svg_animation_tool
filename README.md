@@ -101,6 +101,8 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - When you want to align an object in one keyframe file with the same object in another keyframe file, consider using the `X`, `Y`, `W`, and `H` boxes that appear at the top of Inkscape when the object is selected. You can copy one of these numeric values in one file and insert it into the other file. Or you can specify the same simple number (such as 600 instead of 609.013) for both files.
 
+- Useful Inkscape keyboard shortcuts: `3` (zoom to selected object), `5` (zoom to full drawing), `Ctrl-Shift-X` open XML editor at object selected (which can be selected in Layers area).
+
 - `object-ids` directives (explained below) can appear multiple times in a script with different lists for different directives. Each directive (`arc-height`, `spread-out`, etc.) captures a snapshot of the most recent list at the time it appears.
 
 - `arc-degrees` and `frames-per-step` directives (explained below) persist across `animate` calls until changed again.
