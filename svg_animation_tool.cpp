@@ -1152,10 +1152,8 @@ int main(int argc, char* argv[]) {
                     continue;
                 }
 
-                int n        = (int)activeIds.size();
-                int delay    = se.delay;
-                int expanded = frames_per_step + delay * (n - 1);
-                if (expanded > expandedFrames) expandedFrames = expanded;
+                int n     = (int)activeIds.size();
+                int delay = se.delay;
 
                 // Sort comparator driven by direction string and A/B keyframe
                 // dir: "top"=asc Y, "bottom"=desc Y, "left"=asc X, "right"=desc X
@@ -1168,19 +1166,19 @@ int main(int argc, char* argv[]) {
                         if (dir == "top") {
                             va = useA ? pa.yA : pa.yB;
                             vb = useA ? pb.yA : pb.yB;
-                            return va < vb;  // lower Y = higher on screen = first
+                            return va < vb;
                         } else if (dir == "bottom") {
                             va = useA ? pa.yA : pa.yB;
                             vb = useA ? pb.yA : pb.yB;
-                            return va > vb;  // higher Y = lower on screen = first
+                            return va > vb;
                         } else if (dir == "left") {
                             va = useA ? pa.xA : pa.xB;
                             vb = useA ? pb.xA : pb.xB;
-                            return va < vb;  // lower X = leftmost = first
+                            return va < vb;
                         } else {  // "right"
                             va = useA ? pa.xA : pa.xB;
                             vb = useA ? pb.xA : pb.xB;
-                            return va > vb;  // higher X = rightmost = first
+                            return va > vb;
                         }
                     };
                 };
@@ -1199,6 +1197,29 @@ int main(int argc, char* argv[]) {
                     startRank[startOrder[r]] = r;
                     endRank[endOrder[r]]     = r;
                 }
+
+                // Find the worst-case combined rank (startRank + endRank).
+                // This determines the object with the shortest motion window.
+                // expanded must satisfy:
+                //   span = (expanded-1) - max_combined * delay >= frames_per_step
+                // so: expanded = frames_per_step + max_combined * delay + 1
+                int maxCombined = 0;
+                for (const auto& id : activeIds)
+                    maxCombined = std::max(maxCombined,
+                                           startRank[id] + endRank[id]);
+
+                int expandedSimple  = frames_per_step + delay * (n - 1);
+                int expandedSafe    = frames_per_step + maxCombined * delay + 1;
+                int expanded        = std::max(expandedSimple, expandedSafe);
+                if (expanded > expandedFrames) expandedFrames = expanded;
+
+                // Log if adjustment was needed
+                if (expandedSafe > expandedSimple)
+                    trace << "  spread-out: expanded adjusted from "
+                          << expandedSimple << " to " << expanded
+                          << " to guarantee " << frames_per_step
+                          << " frames per object (max combined rank="
+                          << maxCombined << ")\n";
 
                 // Assign and log
                 trace << "  spread-out timing (delay=" << delay
