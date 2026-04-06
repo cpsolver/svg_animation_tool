@@ -822,8 +822,8 @@ std::string generateFrame(const SvgFile&                              svgA,
                 double tEased = getT(vc.id);
                 double vi = vc.valueA + (vc.valueB - vc.valueA) * tEased;
                 std::ostringstream srcA_str, srcB_str;
-                srcA_str << vc.valueA;
-                srcB_str << vc.valueB;
+                srcA_str << std::fixed << std::setprecision(6) << vc.valueA;
+                srcB_str << std::fixed << std::setprecision(6) << vc.valueB;
                 result += formatValue(vi, srcA_str.str(), srcB_str.str());
                 prev = pos + it->str().size();
                 patched = true;
@@ -884,7 +884,8 @@ std::string generateFrame(const SvgFile&                              svgA,
                 if (idx2 == yValIdx) {
                     result2 += line.substr(prev2, pos - prev2);
                     std::ostringstream sa, sb;
-                    sa << yValueAtT; sb << yValueAtT;
+                    sa << std::fixed << std::setprecision(6) << yValueAtT;
+                    sb << std::fixed << std::setprecision(6) << yValueAtT;
                     result2 += formatValue(newY, sa.str(), sb.str());
                     prev2 = pos + it->str().size();
                     patched2 = true;
