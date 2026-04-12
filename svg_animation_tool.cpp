@@ -752,10 +752,10 @@ std::vector<ValueChange> detectChanges(
         const Element& elemB = itB->second;
         ++sharedIds;
 
-        // ── NEW: check whether either keyframe uses matrix(...) on its
-        //        transform attribute.  If so, handle the whole attribute as
-        //        an affine decomposition and skip the per-number ValueChange
-        //        loop for those six values.
+        // Check whether either keyframe uses matrix(...) on its
+        // transform attribute.  If so, handle the whole attribute as
+        // an affine decomposition and skip the per-number ValueChange
+        // loop for those six values.
         // Collect the line numbers for the "transform" attribute in A and B.
         int transformLineA = -1, transformLineB = -1;
         for (const auto& nv : elemA.values)
@@ -791,6 +791,17 @@ std::vector<ValueChange> detectChanges(
                     changedIds.insert(id);
                     ++changedVals;
 
+                    // Report geometric components that change from A to B
+                    const double PI = std::acos(-1.0);
+                    double dAngleDeg = (mc.decompB.angle - mc.decompA.angle) * 180.0 / PI;
+                    double dSx    = mc.decompB.sx    - mc.decompA.sx;
+                    double dSy    = mc.decompB.sy    - mc.decompA.sy;
+                    double dShear = mc.decompB.shear - mc.decompA.shear;
+                    if (std::fabs(dAngleDeg) > 1e-6) trace << "    rotation: A=" << mc.decompA.angle * 180.0 / PI << " deg  B=" << mc.decompB.angle * 180.0 / PI << " deg  delta=" << dAngleDeg << " deg\n";
+                    if (std::fabs(dSx)       > 1e-6) trace << "    sx:       A=" << mc.decompA.sx    << "  B=" << mc.decompB.sx    << "  delta=" << dSx    << "\n";
+                    if (std::fabs(dSy)       > 1e-6) trace << "    sy:       A=" << mc.decompA.sy    << "  B=" << mc.decompB.sy    << "  delta=" << dSy    << "\n";
+                    if (std::fabs(dShear)    > 1e-6) trace << "    shear:    A=" << mc.decompA.shear << "  B=" << mc.decompB.shear << "  delta=" << dShear << "\n";
+
                     trace << "  id=\"" << id << "\" (matrix affine)\n"
                           << "    lineA=" << transformLineA
                           << " lineB=" << transformLineB << "\n"
@@ -806,7 +817,6 @@ std::vector<ValueChange> detectChanges(
                 handledAsMatrix = true;
             }
         }
-        // ── END NEW matrix block
 
         using Key = std::pair<std::string, int>;
         std::map<Key, const NumericValue*> bLookup;
@@ -815,8 +825,16 @@ std::vector<ValueChange> detectChanges(
 
         bool firstForId = true;
         for (const auto& nvA : elemA.values) {
-            // NEW: skip transform values that were handled as a MatrixChange
+
+            // Skip transform values that were handled as a MatrixChange
             if (handledAsMatrix && nvA.attrName == "transform") continue;
+
+            // Skip polygon/polyline points — vertex-count and pairing
+            // assumptions make scalar interpolation produce invalid geometry
+            if (nvA.attrName == "points") continue;
+
+            // Skip "d" paths
+            if (nvA.attrName == "d") continue;
 
             Key key{nvA.attrName, nvA.valueIndex};
             auto itNvB = bLookup.find(key);
