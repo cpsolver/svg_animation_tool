@@ -153,13 +153,21 @@
  *
  * -- Converting frames to video ------------------------------------------------
  *
- *   mkdir -p frames_png
- *   for f in frames_svg/frame_*.svg; do
- *     inkscape "$f" --export-type=png \
- *       --export-filename="frames_png/$(basename "${f%.svg}").png"
- *   done
- *   Then import the frames_png/ image sequence into Shotcut
- *   (or another video editor) to assemble the final movie.
+ *   Run these commands in bash file:
+ *
+ *       mkdir -p frames_png
+ *       for f in frames_svg/frame_*.svg; do
+ *         inkscape "$f" --export-type=png \
+ *           --export-filename="frames_png/$(basename "${f%.svg}").png"
+ *       done
+ *       ffmpeg -framerate 30 -i frames_png/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_demo.mp4
+ *
+ *   Clarifications about ffmpeg settings:
+ *       produces H.264 video inside an MP4 file.
+ *       -c:v libx264 -- uses the x264 (H.264) encoder.
+ *       -pix_fmt yuv420p -- sets pixel format to YUV 4:2:0 planar (for wide compatibility).
+ *       -crf 18 --- Constant Rate Factor, controls quality, very high, near-lossless.
+ *       -preset medium -- default balance between encoder speed and compression.
  *
  * -- About SVG interpolation ------------------------------------------------
  *
