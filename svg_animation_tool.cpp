@@ -3,7 +3,7 @@
  *
  * Script-driven SVG keyframe animator.
  * Reads a plain-text script file and generates interpolated SVG frames
- * suitable for assembling into an animation video using Inkscape and Shotcut.
+ * suitable for assembling into an animation video using Inkscape and ffmpeg.
  */
 
 /*
@@ -1775,8 +1775,8 @@ int main(int argc, char* argv[]) {
                << "    inkscape \"$f\" --export-type=png \\\n"
                << "      --export-filename=\"frames_png/$(basename \"${f%.svg}\").png\"\n"
                << "  done\n\n"
-               << "Then import the frames_png/ image sequence into Shotcut\n"
-               << "(or another video editor) to assemble the final movie.\n"
+               << "Convert PNG image sequence into video using ffmpeg CLI:\n\n"
+               << "ffmpeg -framerate 30 -i frames_png/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_demo.mp4\n\n"
                << "Source code and documentation at:\n"
                << "https://github.com/cpsolver/svg_animation_tool\n"
                << "══════════════════════════════════════════════════\n";
