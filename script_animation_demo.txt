@@ -1,0 +1,264 @@
+comment-begin
+This script tells the SVG Animation Tool how to generate an animated video
+using the Inkscape files specified in the filenames that end with ".svg".
+----
+
+frames-per-step 100
+
+keyframe_demo_title_screen.svg
+freeze 40
+
+keyframe_demo_zoom_out.svg
+animate
+
+frames-per-step 40
+
+object-ids
+portrait_peltola
+portrait_begich
+portrait_palin
+
+arc-height 35
+spread-out-start-left-end-right
+spread-out 1
+
+object-ids
+group_ballot_b1
+group_ballot_b2
+group_ballot_b3
+group_ballot_b4
+group_ballot_b5
+group_ballot_b6
+group_ballot_b7
+group_ballot_b8
+group_ballot_b9
+group_ballot_b10
+group_ballot_b11
+group_ballot_b12
+group_ballot_b13
+group_ballot_b14
+group_ballot_b15
+group_ballot_b17
+group_ballot_b19 
+
+arc-height 0
+spread-out-start-right-end-left
+spread-out 1
+
+group_ballot_b16 
+group_ballot_b18
+group_ballot_b21
+group_ballot_b22
+group_ballot_b23
+group_ballot_b24
+group_ballot_b25
+group_ballot_b26
+group_ballot_b27
+group_ballot_b28
+group_ballot_b29
+group_ballot_b30
+group_ballot_b31
+group_ballot_b32
+group_ballot_b33
+group_ballot_b34
+group_ballot_b35 
+
+arc-height 0
+spread-out-start-left-end-right
+spread-out 1
+
+keyframe_ballots_hidden.svg
+
+reminder-begin
+no animate here!
+----
+
+frames-per-step 40
+
+keyframe_ballots_grid_almost.svg
+
+animate
+
+keyframe_ballots_grid.svg
+
+frames-per-step 20
+animate
+
+keyframe_ballots_grid_wiggle_cw.svg
+
+frames-per-step 5
+animate
+
+keyframe_ballots_grid_wiggle_ccw.svg
+
+animate
+
+keyframe_ballots_grid_wiggle_cw.svg
+
+animate
+
+keyframe_ballots_grid.svg
+
+animate
+
+object-ids
+group_ballot_b1 group_ballot_b10 group_ballot_b11 group_ballot_b12 group_ballot_b13 group_ballot_b14 group_ballot_b15 group_ballot_b16 group_ballot_b17 group_ballot_b18 group_ballot_b19 group_ballot_b2 group_ballot_b20 group_ballot_b21 group_ballot_b22 group_ballot_b23 group_ballot_b24 group_ballot_b25 group_ballot_b26 group_ballot_b27 group_ballot_b28 group_ballot_b29 group_ballot_b3 group_ballot_b30 group_ballot_b31 group_ballot_b32 group_ballot_b33 group_ballot_b34 group_ballot_b35 group_ballot_b4 group_ballot_b5 group_ballot_b6 group_ballot_b7 group_ballot_b8 group_ballot_b9
+
+arc-height 25
+spread-out-start-top-end-top
+spread-out 1
+
+keyframe_ballots_no_peltola.svg
+
+frames-per-step 30
+animate
+
+keyframe_ballots_no_peltola_win_arrow_small.svg
+
+frames-per-step 5
+animate
+
+keyframe_ballots_no_peltola_win_arrow.svg
+
+frames-per-step 10
+animate
+
+freeze 50
+
+keyframe_ballots_no_peltola_arrows_at_cands.svg
+
+frames-per-step 20
+animate
+
+freeze 10
+
+keyframe_ballots_no_begich.svg
+
+frames-per-step 30
+animate
+
+keyframe_ballots_no_begich_win_arrow_small.svg
+
+frames-per-step 5
+animate
+
+keyframe_ballots_no_begich_win_arrow.svg
+
+frames-per-step 10
+animate
+
+freeze 50
+
+keyframe_ballots_no_begich_arrows_at_cands.svg
+
+frames-per-step 20
+animate
+
+freeze 10
+
+keyframe_ballots_no_palin.svg
+
+frames-per-step 30
+animate
+
+keyframe_ballots_no_palin_win_arrow_small.svg
+
+frames-per-step 5
+animate
+
+keyframe_ballots_no_palin_win_arrow.svg
+
+frames-per-step 10
+animate
+
+freeze 50
+
+keyframe_ballots_no_palin_arrows_at_cands.svg
+
+frames-per-step 20
+animate
+
+freeze 10
+
+object-ids
+portrait_peltola
+portrait_begich
+portrait_palin
+
+arc-height 15
+spread-out-start-right-end-left
+spread-out 1
+
+keyframe_ballots_grid_lower.svg
+
+frames-per-step 30
+animate
+
+keyframe_ballots_leaving_wiggle_cw.svg
+
+frames-per-step 5
+animate
+
+keyframe_ballots_leaving_wiggle_ccw.svg
+
+animate
+
+keyframe_ballots_leaving_wiggle_cw.svg
+
+animate
+
+keyframe_ballots_leaving_wiggle_ccw.svg
+
+animate
+
+keyframe_ballots_gone.svg
+
+frames-per-step 40
+animate
+
+keyframe_ballots_gone_last_one.svg
+
+frames-per-step 30
+animate
+
+keyframe_callout_palin.svg
+
+frames-per-step 20
+animate
+
+freeze 50
+
+keyframe_callout_peltola.svg
+
+frames-per-step 20
+animate
+
+freeze 50
+
+keyframe_callout_begich.svg
+
+frames-per-step 20
+animate
+
+freeze 50
+
+keyframe_callouts_gone.svg
+
+frames-per-step 20
+animate
+
+freeze 5
+
+keyframe_demo_zoom_back.svg
+
+frames-per-step 50
+animate
+
+freeze 5
+
+keyframe_demo_closing.svg
+
+frames-per-step 70
+animate
+
+freeze 100
