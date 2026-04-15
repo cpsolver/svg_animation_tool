@@ -4,6 +4,14 @@ This **SVG animation tool** transforms your **simple script** and **Inkscape SVG
 
 This tool features **script-controlled options** including **ease-in and ease-out transitions**, **staggered group motion**, **arc motion paths**, and **robust** ID-based recognition of numeric **differences between keyframes**.
 
+Here's a video demonstration that was generated from Inkscape files:
+
+https://vimeo.com/1183435863?share=copy&fl=sv&fe=ci
+
+(or vimeo[dot]com/1183435863)
+
+The file `script_animation_demo.txt` contains the script that generated this animation.
+
 ---
 
 ## Build
@@ -39,7 +47,7 @@ This command writes 30 SVG frames to `frames_svg/frame_0000.svg` through
 
 Within the `frames_svg` directory, open file `frame_0014.svg` in Inkscape to verify the objects are halfway between their starting and ending positions.
 
-Instructions below explain how to batch-convert the SVG files into PNG files (using Inkscape in its command-line mode), and how to convert the PNG files into a video using a video editor.
+Instructions below explain how to batch-convert the SVG files into PNG files (using Inkscape in its command-line mode), and how to convert the PNG files into a video.
 
 ---
 
@@ -75,11 +83,11 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - It is useful to **supply your own `id` names** using Inkscape's `object properties` tool or the `XML editor` tool. The output trace file includes additional information for these objects. In contrast, `id` names that match Inkscape's default naming conventions (such as `rect1234`) are not listed in that trace information.
 
+- Inkscape has a software bug that can fail to show layer info in the **Layers** area when a new file is opened. As a workaround, when the layer info is missing, switch to a different application, then switch back to Inkscape, and the layer info should appear.
+
 - In the **Layers** tool area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers, and locking the ones you don't want to change, becomes important as the number of objects increases.
 
 - If your animation has different drawings in **different layers**, and your plan was to reveal a different layer, one at a time, the `animate` directive does not work because Inkscape ensures an SVG file does not have more than one object with the same `id` name. This kind of animation can be inserted as a short sequence, but each layer must be saved to a different keyframe file (using the view layer icons to control which layer is visible in each file). In the script, use the `freeze` directive for each of these different keyframe files.
-
-- Inkscape has a software bug that can fail to show layer info in the **Layers** area when a new file is opened. As a workaround, when the layer info is missing, switch to a different application, then switch back to Inkscape, and the layer info should appear.
 
 - You can change an object's **ID** in the **Object Properties** dialog area. Press the **Enter** key after typing the new name.
 
@@ -87,9 +95,9 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - Some animations may require hiding an object (or group of objects) in one keyframe and showing the object in other keyframe. Set the `opacity` of the object to `0` (zero) in the keyframe where it is hidden.
 
-- Objects **can fade in**, or **fade out**, by changing their opacity between `0` (hidden) and `1` (fully visible). These objects must be inserted into a keyframe before they fade in, and cannot be deleted until after they have faded out.
-
 - If an object does not have an **opacity** attribute, you may be able to add it using Inkscape's `XML editor`. (Or you can try changing the transparency in the fill and stroke dialog area, although this approacy may cause unexpected results.)
+
+- Objects **can fade in**, or **fade out**, by changing their opacity between `0` (hidden) and `1` (fully visible). These objects must be inserted into a keyframe before they fade in, and cannot be deleted until after they have faded out.
 
 - Objects that move into view from off-screen, and later move off-screen, can be **inserted** and **deleted** while they are off-screen in other non-involved keyframes.
 
@@ -99,17 +107,19 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - When you are editing a keyframe in Inkscape and want to see both the object's **starting appearance** and **ending appearance** (such as overlapped, or in different positions), you can use Inkscape's `object properties` tool or `XML editor` tool to change their `id` names. The `id` of the starting version in one keyframe must match the `id` of the ending version in the other keyframe.
 
+- When you copy objects from one keyframe file into a different keyframe file, use Inkscape's 'Paste in Place' option if you don't want them to move or jump between keyframes.
+
 - When you want to align an object in one keyframe file with the same object in another keyframe file, consider using the `X`, `Y`, `W`, and `H` boxes that appear at the top of Inkscape when the object is selected. You can copy one of these numeric values in one file and insert it into the other file. Or you can specify the same simple number (such as 600 instead of 609.013) for both files.
 
 - Useful Inkscape keyboard shortcuts: `3` (zoom to selected object), `5` (zoom to full drawing), `Ctrl-Shift-X` open XML editor at object selected (which can be selected in Layers area).
 
-- `object-ids` directives (explained below) can appear multiple times in a script with different lists for different directives. Each directive (`arc-height`, `spread-out`, etc.) captures a snapshot of the most recent list at the time it appears.
+- `object-ids` directives (explained below) can appear multiple times in a script with different lists for different directives. Each directive (`arc-height`, `spread-out`, etc.) captures a snapshot of the most recent list at the time the directive appears.
 
 - `arc-degrees` and `frames-per-step` directives (explained below) persist across `animate` calls until changed again.
 
 - The `spread-out` stagger (explained below) automatically expands the frame count for that segment. The full frame count can be calulated as `frames_per_step + (delay × (n_objects - 1))`.
 
-- The end of the summary file includes `Meld diff commands` that you can copy into a Linux shell script to conveniently compare changes between sequential keyframe SVG files. Also, at this time you can copy specific changes from one keyframe to another keyframe without needing to use Inkscape, and without needing to position or orient the objects to match, which is needed when those objects are not being animated. Using the Meld application also can help you troubleshoot animations that do not work as expected.
+- The end of the summary file includes `Meld diff commands` that you can copy into a Linux shell script to conveniently compare changes between sequential keyframe SVG files. Also, at this time you can carefully copy specific changes from one keyframe to another keyframe without needing to use Inkscape, and without needing to position or orient the objects to match, which is needed when those objects are not being animated. (This technique does not work well if gradients are involved.) Using the Meld application also can help you troubleshoot animations that do not work as expected.
 
 ---
 
@@ -231,15 +241,20 @@ done
 ```
 
 
-**Step 2 — Import into Shotcut (or any video editor):**
+**Step 2 — Use a video editor or `ffmpeg` utility to convert the PNG files into a video:**
 
-Open Shotcut, create a new project, and import the `frames_png/` folder as an
-'image sequence'. Set the frame rate to match your target video (such as 30 fps).
+On a Linux computer (such as Ubuntu), you can run this command in a terminal:
+
+```bash
+ffmpeg -framerate 30 -i frames_png/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_video.mp4
+```
+
+If you use the Shotcut video editor, create a new project and import the `frames_png/` folder as an
+'image sequence'. Set the frame rate to match your target video (such as 30 fps). The conversion process should be similar if you are using another video editor.
 
 If the animation is short, you can use ImageMagick (or equivalent software) to convert the PNG files into a short animated gif.
 
 ---
-
 
 ## License
 
