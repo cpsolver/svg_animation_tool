@@ -87,7 +87,7 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - In the **Layers** tool area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers, and locking the ones you don't want to change, becomes important as the number of objects increases.
 
-- If your animation has different drawings in **different layers**, and your plan was to reveal a different layer, one at a time, the `animate` directive does not work because Inkscape ensures an SVG file does not have more than one object with the same `id` name. This kind of animation can be inserted as a short sequence, but each layer must be saved to a different keyframe file (using the view layer icons to control which layer is visible in each file). In the script, use the `freeze` directive for each of these different keyframe files.
+- If your animation has different drawings in **different layers**, and your plan was to reveal a different layer, one at a time, the `animate` directive does not work because Inkscape ensures an SVG file does not have more than one object with the same `id` name. This kind of animation can be inserted as a short sequence, but each layer must be saved to a different keyframe file (using the view layer icons to control which layer is visible in each file). In the script, insert a `freeze` directive between each pair (without using the `animate` directive).
 
 - You can change an object's **ID** in the **Object Properties** dialog area. Press the **Enter** key after typing the new name.
 
@@ -120,6 +120,8 @@ Each animated object must share the **same matching `id` name** between the two 
 - The `spread-out` stagger (explained below) automatically expands the frame count for that segment. The full frame count can be calulated as `frames_per_step + (delay × (n_objects - 1))`.
 
 - The end of the summary file includes `Meld diff commands` that you can copy into a Linux shell script to conveniently compare changes between sequential keyframe SVG files. Also, at this time you can carefully copy specific changes from one keyframe to another keyframe without needing to use Inkscape, and without needing to position or orient the objects to match, which is needed when those objects are not being animated. (This technique does not work well if gradients are involved.) Using the Meld application also can help you troubleshoot animations that do not work as expected.
+
+- If you encounter difficulty getting a keyframe to transition to both the previous and following keyframes, consider creating two versions. The two keyframes should visually look the same. In the script, omit the 'animate' directive between them.
 
 ---
 
