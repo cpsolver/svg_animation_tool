@@ -1149,6 +1149,44 @@ std::string generateFrame(const SvgFile& svgA,
 }
 
 // ------------------------------------------------
+// reportLabelMismatches
+// ------------------------------------------------
+
+void reportLabelMismatches(const SvgFile& svg, std::ofstream& trace) {
+    static const std::regex labelRe(R"X(inkscape:label="([^"]*)")X");
+    static const std::regex layerIdRe(R"(^layer[0-9]+$)");
+    bool headerWritten = false;
+    for (const auto& kv : svg.elements) {
+        const Element& e = kv.second;
+        if (std::regex_match(e.id, layerIdRe)) continue;
+        int start = std::max(0, e.tagOpenLine - 1);
+        int end   = std::min((int)svg.lines.size() - 1, e.tagCloseLine - 1);
+        for (int li = start; li <= end; ++li) {
+            std::smatch m;
+            if (std::regex_search(svg.lines[li], m, labelRe)) {
+                std::string label = m[1].str();
+                if (label != e.id &&
+                    (label.find('_') != std::string::npos ||
+                     e.id.find('_') != std::string::npos)) {
+                    if (!headerWritten) {
+                        std::cout << "  Label/id mismatches in " << svg.filename << ":\n";
+                        trace     << "Label/id mismatches in " << svg.filename << ":\n";
+                        headerWritten = true;
+                    }
+                    std::cout << "    line " << (li + 1)
+                              << ": id=\"" << e.id
+                              << "\"  label=\"" << label << "\"\n";
+                    trace     << "  line " << (li + 1)
+                              << ": id=\"" << e.id
+                              << "\"  label=\"" << label << "\"\n";
+                }
+                break;
+            }
+        }
+    }
+}
+
+// ------------------------------------------------
 // Frame writer
 // ------------------------------------------------
 
@@ -1333,6 +1371,7 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Error loading '" << tok << "': " << e.what() << "\n";
                 ++i; continue;
             }
+            reportLabelMismatches(svg, trace);
 
             if (window.size() == 2) { window.pop_front(); windowUsed.pop_front(); }
             window.push_back(std::move(svg));
