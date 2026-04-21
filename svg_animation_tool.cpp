@@ -875,11 +875,8 @@ std::vector<ValueChange> detectChanges(
         }
     }
 
-    std::string changeLine = "  Shared ids: " + std::to_string(sharedIds)
-                           + "  Changed values: " + std::to_string(changedVals);
-    std::cout  << changeLine << "\n";
-    summary    << changeLine << "\n";
-    trace      << changeLine << "\n";
+    trace      << "  Shared id count: " << std::to_string(sharedIds) << "\n";
+    trace      << "  Changed values count: " + std::to_string(changedVals) << "\n";
 
     // Write space-delimited list of animated ids to summary
     if (!changedIds.empty()) {
@@ -1394,9 +1391,8 @@ int main(int argc, char* argv[]) {
             const SvgFile& svgB = window[1];
 
             ++animateCount;
-            std::string animHeader = "animate #" + std::to_string(animateCount)
-                                   + ": " + svgA.filename
-                                   + " → " + svgB.filename;
+            std::string animHeader = "From: " + svgA.filename + "\n"
+                                   + "To:   " + svgB.filename;
             std::cout  << animHeader << "\n";
             summary    << animHeader << "\n";
             trace      << animHeader << "\n";
@@ -1584,12 +1580,11 @@ int main(int argc, char* argv[]) {
                 ++globalFrame;
             }
 
-            std::string frameRange = "    Frames " + std::to_string(firstFrameNum)
-                                   + " – " + std::to_string(globalFrame - 1)
-                                   + "  (" + std::to_string(globalFrame - firstFrameNum)
-                                   + " written)";
+            std::string frameRange = std::to_string(globalFrame - firstFrameNum)
+                                   + " frames";
             std::cout  << frameRange << "\n";
-            summary    << frameRange << "\n";
+            summary << "  " << std::to_string(globalFrame - firstFrameNum)
+                                   << " frames written" << "\n\n";
 
             // Accumulate meld entry for this segment
             meldSection += "meld  " + svgA.filename + "  " + svgB.filename + "\n\n";
@@ -1622,10 +1617,8 @@ int main(int argc, char* argv[]) {
                 ++globalFrame;
             }
 
-            std::string freezeLine = "freeze " + std::to_string(freezeN)
-                                   + ": " + current.filename
-                                   + "  Frames " + std::to_string(firstFrameNum)
-                                   + " – " + std::to_string(globalFrame - 1);
+            std::string freezeLine = "Freeze: " + current.filename + "\n"
+                + "  " + std::to_string(freezeN) + " frames written" + "\n";
             std::cout  << freezeLine << "\n";
             summary    << freezeLine << "\n";
 
@@ -1746,7 +1739,6 @@ int main(int argc, char* argv[]) {
             if (val > 0) {
                 frames_per_step = val;
                 trace   << "frames-per-step: " << frames_per_step << "\n";
-                summary << "frames-per-step : " << frames_per_step << "\n";
             } else {
                 std::cout << "WARNING: frames-per-step requires a positive integer — ignored.\n";
             }
@@ -1786,21 +1778,17 @@ int main(int argc, char* argv[]) {
             ++i; continue;
         }
 
-        std::cout << "WARNING: unknown token '" << tok << "' — skipping.\n";
+        std::cout << "WARNING: unknown script token '" << tok << "' — skipping.\n";
         ++i;
     }
 
     // ── Flush any remaining directive state ─────────────────────────────────
     flushObjectIds();
 
-    // ── Print settings header now that directives are all processed ─────────
-    std::cout << "Frames/step    : " << frames_per_step << "\n"
-              << "Easing         : smootherstep\n"
-              << "Output dir     : " << output_dir << "/\n\n";
+    // ── Print settings now that directives are all processed ─────────
+    std::cout << "Output dir     : " << output_dir << "/\n\n";
 
-    summary << "Frames/step    : " << frames_per_step << "\n"
-            << "Easing         : smootherstep\n"
-            << "Output dir     : " << output_dir << "/\n"
+    summary << "Output dir     : " << output_dir << "/\n"
             << "Trace file     : " << TRACE_FILE << "\n\n";
 
     // ── Final ────────────────────────────────────────────────────────────────
