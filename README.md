@@ -83,6 +83,8 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - It is useful to **supply your own `id` names** using Inkscape's `object properties` tool or the `XML editor` tool. The output trace file includes additional information for these objects. In contrast, `id` names that match Inkscape's default naming conventions (such as `rect1234`) are not listed in that trace information.
 
+- When you copy a keyframe file, use the File Manager, and rename the file. Do not use the `save-as` method of copying a file because the `save-as` command makes changes that cause some objects to become unrecognizable between keyframes, wich can cause odd and unexpected glitches in the animation.
+
 - Inkscape has a software bug that can fail to show layer info in the **Layers** area when a new file is opened. As a workaround, when the layer info is missing, switch to a different application, then switch back to Inkscape, and the layer info should appear.
 
 - In the **Layers** tool area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers, and locking the ones you don't want to change, becomes important as the number of objects increases.
