@@ -1064,6 +1064,20 @@ std::string generateFrame(const SvgFile& svgA,
         double tEased = getT(mc.id);
         AffineDecomp interp = interpDecomp(mc.decompA, mc.decompB, tEased);
 
+        // Apply arc offset if this id appears in any ArcEntry
+        for (const auto& arc : arcEntries) {
+            for (const auto& arcId : arc.ids) {
+                if (arcId == mc.id) {
+                    double hSpan = std::fabs(mc.decompB.tx - mc.decompA.tx);
+                    if (hSpan > 1e-9) {
+                        double offset = computeArcOffset(tEased, arc.trimDegrees,
+                                                         arc.peakPercent, hSpan);
+                        interp.ty -= offset;
+                    }
+                }
+            }
+        }
+
         double a, b, c, d, e, f;
         recomposeMatrix(interp, a, b, c, d, e, f);
 
@@ -1425,6 +1439,15 @@ int main(int argc, char* argv[]) {
                 auto& p = posMap[vc.id];
                 if (vc.valueIndex == 4) { p.xA = vc.valueA; p.xB = vc.valueB; }
                 if (vc.valueIndex == 5) { p.yA = vc.valueA; p.yB = vc.valueB; }
+            }
+
+            // Also populate posMap from MatrixChange translations
+            for (const auto& mc : matrixChanges) {
+                auto& p = posMap[mc.id];
+                p.xA = mc.decompA.tx;
+                p.yA = mc.decompA.ty;
+                p.xB = mc.decompB.tx;
+                p.yB = mc.decompB.ty;
             }
 
             // Per-object timing for this segment
