@@ -83,9 +83,9 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - It is useful to **supply your own `id` names** using Inkscape's `object properties` tool or the `XML editor` tool. The output trace file includes additional information for these objects. In contrast, `id` names that match Inkscape's default naming conventions (such as `rect1234`) are not listed in that trace information.
 
-- When you copy a keyframe file, use the File Manager, and rename the file. Do not use the `save-as` method of copying a file because the `save-as` command makes changes that cause some objects to become unrecognizable between keyframes, wich can cause odd and unexpected glitches in the animation.
+- When you copy a keyframe file, use the File Manager, and rename the file. Do not use the `save-as` method of copying a file because the `save-as` command makes changes that cause some objects to become unrecognizable between keyframes.
 
-- Inkscape has a software bug that can fail to show layer info in the **Layers** area when a new file is opened. As a workaround, when the layer info is missing, switch to a different application, then switch back to Inkscape, and the layer info should appear.
+- Inkscape has a software bug that fails to show layer info in the **Layers** area when you access that info for a newly opened file.  If you hover over the icon that creates a new layer, the layer info should appear. If not, switch to a different application, then switch back to Inkscape, and the layer info should appear.
 
 - In the **Layers** tool area, use the padlock to lock layers you don't want to edit. Putting different objects into different layers, and locking the ones you don't want to change, becomes important as the number of objects increases.
 
@@ -97,7 +97,7 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - Some animations may require hiding an object (or group of objects) in one keyframe and showing the object in other keyframe. Set the `opacity` of the object to `0` (zero) in the keyframe where it is hidden.
 
-- If an object does not have an **opacity** attribute, you may be able to add it using Inkscape's `XML editor`. (Or you can try changing the transparency in the fill and stroke dialog area, although this approacy may cause unexpected results.)
+- If an object does not have an **opacity** attribute, in most cases you can add it using Inkscape's `XML editor`.
 
 - Objects **can fade in**, or **fade out**, by changing their opacity between `0` (hidden) and `1` (fully visible). These objects must be inserted into a keyframe before they fade in, and cannot be deleted until after they have faded out.
 
@@ -109,11 +109,13 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - When you are editing a keyframe in Inkscape and want to see both the object's **starting appearance** and **ending appearance** (such as overlapped, or in different positions), you can use Inkscape's `object properties` tool or `XML editor` tool to change their `id` names. The `id` of the starting version in one keyframe must match the `id` of the ending version in the other keyframe.
 
-- When you copy objects from one keyframe file into a different keyframe file, use Inkscape's 'Paste in Place' option if you don't want them to move or jump between keyframes.
+- When you copy objects from one keyframe file into a different keyframe file, use Inkscape's 'Paste in Place' option because it copies the object's location.
 
-- When you want to align an object in one keyframe file with the same object in another keyframe file, consider using the `X`, `Y`, `W`, and `H` boxes that appear at the top of Inkscape when the object is selected. You can copy one of these numeric values in one file and insert it into the other file. Or you can specify the same simple number (such as 600 instead of 609.013) for both files.
+- When you want to align an object in one keyframe file with the same object in another keyframe file, consider using the `X`, `Y`, `W`, and `H` boxes that appear at the top of Inkscape when the object is selected. You can copy one of these numeric values in one file and insert the copied value into the other file. Or you can specify the same simple number (such as 600 instead of 609.013) for both files.
 
-- Useful Inkscape keyboard shortcuts: `3` (zoom to selected object), `5` (zoom to full drawing), `Ctrl-Shift-X` open XML editor at object selected (which can be selected in Layers area).
+- Useful Inkscape keyboard shortcuts for zooming: `3` (zoom to selected object), `5` (zoom to full drawing).
+
+- When an object is selected, press `Ctrl-Shift-X` to open the XML editor for the selected object. This works when you have selected the object in the Layers area.
 
 - `object-ids` directives (explained below) can appear multiple times in a script with different lists for different directives. Each directive (`arc-height`, `spread-out`, etc.) captures a snapshot of the most recent list at the time the directive appears.
 
@@ -123,7 +125,7 @@ Each animated object must share the **same matching `id` name** between the two 
 
 - The end of the summary file includes `Meld diff commands` that you can copy into a Linux shell script to conveniently compare changes between sequential keyframe SVG files. Also, at this time you can carefully copy specific changes from one keyframe to another keyframe without needing to use Inkscape, and without needing to position or orient the objects to match, which is needed when those objects are not being animated. (This technique does not work well if gradients are involved.) Using the Meld application also can help you troubleshoot animations that do not work as expected.
 
-- If you encounter difficulty getting a keyframe to transition to both the previous and following keyframes, consider creating two versions. The two keyframes should visually look the same. In the script, omit the 'animate' directive between them.
+- If you encounter difficulty getting a keyframe to transition to both the previous and following keyframes, consider creating two versions of what appears to be the same keyframe. Derive one of these keyframes from the previous keyframe, and derive the other keyframe from the following keyframe. In the script, omit the 'animate' directive between these two versions of what appear to be the same keyframe.
 
 ---
 
