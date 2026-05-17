@@ -1435,10 +1435,42 @@ int main(int argc, char* argv[]) {
             struct Pos { double xA=0, yA=0, xB=0, yB=0; };
             std::map<std::string, Pos> posMap;
             for (const auto& vc : changes) {
-                if (vc.attrName != "transform") continue;
+                trace << "    posMap loop: id=" << vc.id
+                      << "  attr=" << vc.attrName
+                      << "  idx=" << vc.valueIndex
+                      << "  A=" << vc.valueA
+                      << "  B=" << vc.valueB << "\n";
+                if (vc.attrName != "transform" && vc.attrName != "y") continue;
                 auto& p = posMap[vc.id];
-                if (vc.valueIndex == 4) { p.xA = vc.valueA; p.xB = vc.valueB; }
-                if (vc.valueIndex == 5) { p.yA = vc.valueA; p.yB = vc.valueB; }
+                if (vc.attrName == "transform") {
+                    if (vc.valueIndex == 4) { p.xA = vc.valueA; p.xB = vc.valueB; }
+                    if (vc.valueIndex == 5) { p.yA = vc.valueA; p.yB = vc.valueB; }
+                }
+                if (vc.attrName == "y" && vc.valueIndex == 0) {
+                    p.yA = vc.valueA;
+                    p.yB = vc.valueB;
+                }
+            }
+
+            // Also populate posMap from MatrixChange translations
+            for (const auto& mc : matrixChanges) {
+                auto& p = posMap[mc.id];
+                p.xA = mc.decompA.tx;
+                p.xB = mc.decompB.tx;
+                // Only set Y from matrix if not already set by scalar y attribute
+                if (p.yA == 0.0 && p.yB == 0.0) {
+                    p.yA = mc.decompA.ty;
+                    p.yB = mc.decompB.ty;
+                }
+            }
+
+            trace << "  posMap contents:\n";
+            for (const auto& kv : posMap) {
+                trace << "    id=" << kv.first
+                      << "  xA=" << kv.second.xA
+                      << "  yA=" << kv.second.yA
+                      << "  xB=" << kv.second.xB
+                      << "  yB=" << kv.second.yB << "\n";
             }
 
             // Also populate posMap from MatrixChange translations
@@ -1485,6 +1517,8 @@ int main(int argc, char* argv[]) {
                         } else if (dir == "bottom") {
                             va = useA ? pa.yA : pa.yB;
                             vb = useA ? pb.yA : pb.yB;
+                            trace << "    SORT bottom: " << ia << "=" << va
+                                  << " vs " << ib << "=" << vb << "\n";
                             return va > vb;
                         } else if (dir == "left") {
                             va = useA ? pa.xA : pa.xB;
