@@ -130,6 +130,9 @@
  *     frames-per-step N  - Frames per animate segment (default 30).
  *                          Must be a positive integer.
  *
+ *     captions-frames-per-second N - Frames per second for caption timing
+ *                          calculations (default 30).
+ *
  *     output-directory D - Directory for output frames (default
  *                          "frames_svg"). Must not contain a period.
  *
@@ -212,9 +215,13 @@
 
 namespace fs = std::filesystem;
 
-// Global output files
+// Output files
 std::ofstream trace;
 std::ofstream summary;
+std::ofstream captions;
+
+// Global variables
+int captions_frames_per_second = 30;
 
 
 // ------------------------------------------------
@@ -1226,6 +1233,29 @@ void writeFrame(const std::string& outDir,
     writeFile(fname.str(), svgContent);
 }
 
+
+// ------------------------------------------------
+// Format caption timestamp.
+// ------------------------------------------------
+
+std::string frameToVtt(int frame, int fps) {
+    int totalMs  = (frame * 1000) / fps;
+    int ms       = totalMs % 1000;
+    int totalSec = totalMs / 1000;
+    int sec      = totalSec % 60;
+    int totalMin = totalSec / 60;
+    int min      = totalMin % 60;
+    int hour     = totalMin / 60;
+    std::ostringstream oss;
+    oss << std::setw(2) << std::setfill('0') << hour << ":"
+        << std::setw(2) << std::setfill('0') << min  << ":"
+        << std::setw(2) << std::setfill('0') << sec  << "."
+        << std::setw(3) << std::setfill('0') << ms;
+    return oss.str();
+}
+
+
+
 // ------------------------------------------------
 // main
 // ------------------------------------------------
@@ -1235,6 +1265,7 @@ int main(int argc, char* argv[]) {
     // ── Hardcoded options ─────────────────────────────────────────────────────
     const std::string TRACE_FILE   = "output_trace_animate.txt";
     const std::string SUMMARY_FILE = "output_summary_animate.txt";
+    const std::string CAPTIONS_FILE = "output_captions_and_timing.vtt";
 
     // ── Script-controlled options (set by directives before first animate) ────
     int         frames_per_step = 30;          // frames-per-step directive
@@ -1266,7 +1297,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ── Open trace and summary files ─────────────────────────────────────────
+    // ── Open output files ─────────────────────────────────────────
     trace.open(TRACE_FILE);
     if (!trace) {
         std::cerr << "Error: cannot open trace file: " << TRACE_FILE << "\n";
@@ -1277,6 +1308,13 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: cannot open summary file: " << SUMMARY_FILE << "\n";
         return 1;
     }
+
+    captions.open(CAPTIONS_FILE);
+    if (!captions) {
+        std::cerr << "Error: cannot open captions file: " << CAPTIONS_FILE << "\n";
+        return 1;
+    }
+    captions << "WEBVTT\n\n";
 
     // ── Settings header — stdout and summary ─────────────────────────────────
     std::cout << "Script: " << scriptPath << "  ("
@@ -1805,6 +1843,20 @@ int main(int argc, char* argv[]) {
             ++i; continue;
         }
 
+        // ── captions-frames-per-second ───────────────────────────────────────
+        if (tok == "captions-frames-per-second") {
+            flushObjectIds();
+            collectingMode = "";
+            int val = consumeOptionalInt(i);
+            if (val > 0) {
+                captions_frames_per_second = val;
+                trace   << "captions-frames-per-second: " << captions_frames_per_second << "\n";
+            } else {
+                std::cout << "WARNING: captions-frames-per-second requires a positive integer — ignored.\n";
+            }
+            ++i; continue;
+        }
+
         // ── output-directory ─────────────────────────────────────────────────
         if (tok == "output-directory") {
             flushObjectIds();
@@ -1847,9 +1899,9 @@ int main(int argc, char* argv[]) {
 
     // ── Print settings now that directives are all processed ─────────
     std::cout << "Output dir     : " << output_dir << "/\n\n";
-
     summary << "Output dir     : " << output_dir << "/\n"
             << "Trace file     : " << TRACE_FILE << "\n\n";
+    summary << "Captions file  : " << CAPTIONS_FILE << "\n";
 
     // ── Final ────────────────────────────────────────────────────────────────
     std::string doneMsg = "Done!  " + std::to_string(globalFrame)
