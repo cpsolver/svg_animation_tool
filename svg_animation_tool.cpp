@@ -1441,6 +1441,10 @@ int main(int argc, char* argv[]) {
                 svg = loadSvg(tok);
             } catch (const std::exception& e) {
                 std::cerr << "Error loading '" << tok << "': " << e.what() << "\n";
+                trace   << "Error loading '" << tok << "': " << e.what() << "\n";
+                summary << "Error loading '" << tok << "': " << e.what() << "\n";
+                window.clear();
+                windowUsed.clear();
                 ++i; continue;
             }
             reportLabelMismatches(svg);
@@ -1458,8 +1462,11 @@ int main(int argc, char* argv[]) {
             int captionStart = globalFrame;
             collectingMode = "";
             if (window.size() < 2) {
-                std::cout << "WARNING: 'animate' requires two keyframes; only "
-                          << window.size() << " available. Skipping.\n";
+                std::string msg = "Error: 'animate' requires two keyframes; only "
+                                + std::to_string(window.size()) + " available. Skipping.";
+                std::cout  << msg << "\n";
+                trace      << msg << "\n";
+                summary    << msg << "\n";
                 ++i; continue;
             }
 
@@ -1730,8 +1737,13 @@ int main(int argc, char* argv[]) {
             int freezeN = 0;
             try { freezeN = std::stoi(scriptTokens[i + 1]); } catch (...) { ++i; continue; }
             if (freezeN <= 0) { i += 2; continue; }
-            if (window.empty()) { i += 2; continue; }
-
+            if (window.empty()) {
+                std::string msg = "Error: 'freeze' requires a keyframe but none is loaded. Skipping.";
+                std::cout  << msg << "\n";
+                trace      << msg << "\n";
+                summary    << msg << "\n";
+                i += 2; continue;
+            }
             const SvgFile& current = window.back();
             int firstFrameNum = globalFrame;
             std::string frozenSvg;
