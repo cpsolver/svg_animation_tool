@@ -1682,6 +1682,14 @@ int main(int argc, char* argv[]) {
                     }
                     trace << "\n";
                 }
+
+                trace << "  final timingMap:\n";
+                for (const auto& kv : timingMap) {
+                    trace << "    id=" << std::left << std::setw(25) << kv.first
+                          << "  startFrame=" << kv.second.startFrame
+                          << "  endFrame="   << kv.second.endFrame << "\n";
+                }
+
             }
 
             // Phase 4
