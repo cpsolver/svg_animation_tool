@@ -230,6 +230,9 @@ struct CaptionEntry {
 };
 std::vector<CaptionEntry> captionEntries;
 
+// Global: parsed script text blocks (prefix -> normalized text)
+std::map<std::string,std::string> scriptText;
+
 
 // ------------------------------------------------
 // Easing functions
@@ -322,11 +325,10 @@ std::string normalizeBlockText(const std::string& raw) {
 /// - No comment syntax: all characters are significant.
 /// - Tokens matching [a-zA-Z0-9-]+-begin open a text-collection block.
 ///   Raw text is collected until a standalone token of 3+ dashes is found.
-///   Collected text is normalized and stored in scriptText[prefix].
+///   Collected text is normalized and stored in the global scriptText[prefix].
 ///   If the same prefix appears again, it overwrites the previous entry.
 /// - All other tokens are returned in the tokens vector for normal processing.
-std::vector<std::string> loadScript(const std::string& path,
-                                     std::map<std::string,std::string>& scriptText) {
+std::vector<std::string> loadScript(const std::string& path) {
     std::ifstream f(path);
     if (!f) throw std::runtime_error("Cannot open script: " + path);
 
@@ -757,18 +759,49 @@ struct MatrixChange {
     AffineDecomp decompB;
 };
 
-/// Compare two parsed SVGs, return changed values.
+/// One spread-out directive, capturing the object-ids list, delay, and
+/// sort directions for start (keyframe A) and end (keyframe B) ordering.
+/// startDir / endDir are one of: "top" "bottom" "left" "right"
+struct SpreadEntry {
+    std::vector<std::string> ids;
+    int delay;
+    std::string startDir; // default "top"
+    std::string endDir;   // default "top"
+};
+
+/// Per-object timing computed from a SpreadEntry at animate time.
+struct ObjectTiming {
+    std::string id;
+    int startFrame;
+    int endFrame;
+};
+
+/// One arc-height directive, capturing the object-ids list and shape
+/// parameters at the moment the directive was encountered.
+struct ArcEntry {
+    std::vector<std::string> ids;       // snapshot of object-ids at that moment
+    int peakPercent;                     // peak height as % of horizontal span
+    int trimDegrees;                     // ellipse trim angle (default 20)
+};
+
+// Globals: data computed once per 'animate' segment and consumed by
+// generateFrame() on every frame call within that segment.
+std::vector<ValueChange>            changes;
+std::vector<MatrixChange>           matrixChanges;
+std::vector<ArcEntry>               arcEntries;
+std::map<std::string, ObjectTiming> timingMap;
+
+/// Compare two parsed SVGs, fill the global `changes` and `matrixChanges`.
 /// Detail goes to trace file; summary line goes to both stdout and summary file.
-/// transform="matrix(...)" changes are captured in matrixChangesOut instead of
-/// being added to the returned ValueChange vector.
-std::vector<ValueChange> detectChanges(
+/// transform="matrix(...)" changes are captured in the global matrixChanges
+/// instead of being added to the global changes vector.
+void detectChanges(
     const SvgFile& a,
     const SvgFile& b,
-    std::set<std::string>& changedIdsOut,
-    std::vector<MatrixChange>& matrixChangesOut)   // NEW parameter
+    std::set<std::string>& changedIdsOut)
 {
-    std::vector<ValueChange> changes;
-    matrixChangesOut.clear();                       // NEW
+    changes.clear();
+    matrixChanges.clear();
 
     trace << "Changes between " << a.filename
           << " and " << b.filename << ":\n";
@@ -824,7 +857,7 @@ std::vector<ValueChange> detectChanges(
                                                   valsA[3], valsA[4], valsA[5]);
                     mc.decompB  = decomposeMatrix(valsB[0], valsB[1], valsB[2],
                                                   valsB[3], valsB[4], valsB[5]);
-                    matrixChangesOut.push_back(mc);
+                    matrixChanges.push_back(mc);
                     changedIds.insert(id);
                     ++changedVals;
 
@@ -918,39 +951,12 @@ std::vector<ValueChange> detectChanges(
         }
         summary << "\n";
     }
-
-    return changes;
 }
 
 
 // ------------------------------------------------
 // Arc path
 // ------------------------------------------------
-
-/// One spread-out directive, capturing the object-ids list, delay, and
-/// sort directions for start (keyframe A) and end (keyframe B) ordering.
-/// startDir / endDir are one of: "top" "bottom" "left" "right"
-struct SpreadEntry {
-    std::vector<std::string> ids;
-    int delay;
-    std::string startDir; // default "top"
-    std::string endDir;   // default "top"
-};
-
-/// Per-object timing computed from a SpreadEntry at animate time.
-struct ObjectTiming {
-    std::string id;
-    int startFrame;
-    int endFrame;
-};
-
-/// One arc-height directive, capturing the object-ids list and shape
-/// parameters at the moment the directive was encountered.
-struct ArcEntry {
-    std::vector<std::string> ids;       // snapshot of object-ids at that moment
-    int peakPercent;                     // peak height as % of horizontal span
-    int trimDegrees;                     // ellipse trim angle (default 20)
-};
 
 /// Compute the Y arc offset at animation parameter t (0..1).
 ///
@@ -1003,10 +1009,6 @@ std::string formatValue(double vi,
 
 std::string generateFrame(const SvgFile& svgA,
                            const SvgFile& svgB,
-                           const std::vector<ValueChange>& changes,
-                           const std::vector<MatrixChange>& matrixChanges, // NEW
-                           const std::vector<ArcEntry>& arcEntries,
-                           const std::map<std::string, ObjectTiming>& timingMap,
                            int frameIndex,
                            int expandedFrames,
                            int midFrame,
@@ -1295,10 +1297,9 @@ int main(int argc, char* argv[]) {
     int captionQueueIndex = 0;
 
     // ── Load script ──────────────────────────────────────────────────────────
-    std::map<std::string,std::string> scriptText;  // prefix -> normalized text
     std::vector<std::string> scriptTokens;
     try {
-        scriptTokens = loadScript(scriptPath, scriptText);
+        scriptTokens = loadScript(scriptPath);
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
         return 1;
@@ -1366,10 +1367,8 @@ int main(int argc, char* argv[]) {
     int         currentArcDeg   = 20;    // updated by arc-degrees
     std::string currentSpreadStart = "top";  // updated by spread-out-start-*-end-*
     std::string currentSpreadEnd   = "top";  // updated by spread-out-start-*-end-*
+    bool        testUseFreezeNotAnimate = false;  // set by test-use-freeze-not-animate
     // frames_per_step and output_dir are declared above and updated by directives
-
-    // Arc entries: one per arc-height directive, each with its own id snapshot
-    std::vector<ArcEntry> arcEntries;
 
     // Spread entries: one per spread-out directive, each with its own id snapshot
     std::vector<SpreadEntry> spreadEntries;
@@ -1473,6 +1472,48 @@ int main(int argc, char* argv[]) {
             const SvgFile& svgA = window[0];
             const SvgFile& svgB = window[1];
 
+            // ── test-use-freeze-not-animate: replace this animate with two
+            // freezes (svgA for the first half, svgB for the second half),
+            // skipping change detection / spread-out / arc / interpolation
+            // entirely. Useful for quickly test-rendering a long script.
+            if (testUseFreezeNotAnimate) {
+                int half1 = frames_per_step / 2;
+                int half2 = frames_per_step - half1;
+
+                std::string svgAContent, svgBContent;
+                for (const auto& ln : svgA.lines) svgAContent += ln + '\n';
+                for (const auto& ln : svgB.lines) svgBContent += ln + '\n';
+
+                int firstFrameNumTF = globalFrame;
+                for (int f = 0; f < half1; ++f) {
+                    writeFrame(output_dir, globalFrame, DIGITS, svgAContent);
+                    ++globalFrame;
+                }
+                for (int f = 0; f < half2; ++f) {
+                    writeFrame(output_dir, globalFrame, DIGITS, svgBContent);
+                    ++globalFrame;
+                }
+
+                std::string tfMsg = "test-use-freeze-not-animate: '" + svgA.filename
+                                  + "' frozen " + std::to_string(half1) + " frames, '"
+                                  + svgB.filename + "' frozen " + std::to_string(half2)
+                                  + " frames (in place of animate)";
+                std::cout  << tfMsg << "\n";
+                trace      << tfMsg << "\n";
+                summary    << tfMsg << "\n"
+                           << "  " << std::to_string(globalFrame - firstFrameNumTF)
+                           << " frames written" << "\n\n";
+
+                windowUsed[0] = true;
+                windowUsed[1] = true;
+                prevWasAnimate = false;
+
+                if (captionQueueIndex < (int)captionQueue.size())
+                    captionEntries.push_back({captionStart, globalFrame, captionQueue[captionQueueIndex++]});
+
+                ++i; continue;
+            }
+
             ++animateCount;
             std::string animHeader = "From: " + svgA.filename + "\n"
                                    + "To:   " + svgB.filename;
@@ -1480,12 +1521,9 @@ int main(int argc, char* argv[]) {
             summary    << animHeader << "\n";
             trace      << animHeader << "\n";
 
-            // Phase 3 — detect changes
+            // Phase 3 — detect changes (fills global changes / matrixChanges)
             std::set<std::string> changedIds;
-            std::vector<MatrixChange> matrixChanges;
-            std::vector<ValueChange>  changes =
-                detectChanges(svgA, svgB,
-                              changedIds, matrixChanges);
+            detectChanges(svgA, svgB, changedIds);
 
             // ── Step 1: spread-out timing ────────────────────────────────────
             // Build a quick lookup: id -> {xA, yA, xB, yB}
@@ -1530,17 +1568,8 @@ int main(int argc, char* argv[]) {
                       << "  yB=" << kv.second.yB << "\n";
             }
 
-            // Also populate posMap from MatrixChange translations
-            for (const auto& mc : matrixChanges) {
-                auto& p = posMap[mc.id];
-                p.xA = mc.decompA.tx;
-                p.yA = mc.decompA.ty;
-                p.xB = mc.decompB.tx;
-                p.yB = mc.decompB.ty;
-            }
-
-            // Per-object timing for this segment
-            std::map<std::string, ObjectTiming> timingMap;
+            // Per-object timing for this segment (global timingMap)
+            timingMap.clear();
             int expandedFrames = frames_per_step;
 
             for (const auto& se : spreadEntries) {
@@ -1705,9 +1734,7 @@ int main(int argc, char* argv[]) {
                                  ? 0.0
                                  : (double)f / (double)(expandedFrames - 1);
                 double tEased  = smootherstep(tLinear);
-                std::string svgOut = generateFrame(svgA, svgB, changes,
-                                                   matrixChanges,
-                                                   arcEntries, timingMap,
+                std::string svgOut = generateFrame(svgA, svgB,
                                                    f, expandedFrames, midFrame,
                                                    tEased);
                 writeFrame(output_dir, globalFrame, DIGITS, svgOut);
@@ -1876,6 +1903,16 @@ int main(int argc, char* argv[]) {
             for (const auto& id : objectIds) summary << " " << id;
             summary << "\n";
             // Do NOT flush/clear objectIds — the list may be reused by other directives
+            ++i; continue;
+        }
+
+        // ── test-use-freeze-not-animate ──────────────────────────────────────
+        if (tok == "test-use-freeze-not-animate") {
+            flushObjectIds();
+            collectingMode = "";
+            testUseFreezeNotAnimate = true;
+            trace   << "test-use-freeze-not-animate: enabled\n";
+            summary << "test-use-freeze-not-animate: enabled\n";
             ++i; continue;
         }
 
