@@ -130,7 +130,7 @@ int main() {
                       "); falling back to inkscape for " + input.string());
             }
 
-            std::cout << "."
+            std::cout << "." << std::flush;
             trace("Rendering " + input.string() + " with inkscape");
 //            trace("Rendering " + input.string() + " -> " + output.string() + " with inkscape");
             bool ok = run_inkscape(input, output);
@@ -161,6 +161,7 @@ int main() {
         g_trace.close();
     }
 
+    std::cout << std::endl;
     std::cout << "Done rendering" << std::endl;
     return 0;
 }
