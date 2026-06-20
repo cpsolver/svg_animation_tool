@@ -120,6 +120,13 @@
  *                      it lifts objects upward regardless of whether
  *                      spread-out uses a left/right stagger direction.
  *                      Uses the current arc-degrees setting.
+ *                      Works on either a transform="matrix(...)" /
+ *                      transform="translate(...)" encoding, or on bare
+ *                      x/y attributes — whichever the object uses. If an
+ *                      object has both a transform/matrix change and a
+ *                      bare x/y attribute change in the same segment, the
+ *                      arc is skipped for that object and a warning is
+ *                      written to trace/summary (ambiguous which to use).
  *
  *     arc-degrees [N] - Set the ellipse trim angle for arc-height
  *                       (default 20). Larger values give a flatter
@@ -1147,6 +1154,7 @@ std::string generateFrame(const SvgFile& svgA,
 
     // Apply arc Y offsets for each ArcEntry
     static const std::regex numRe2(R"(-?(?:\d+\.?\d*|\.\d+))");
+    static std::set<std::string> arcAmbiguousWarned;  // report each id only once
     for (const auto& arc : arcEntries) {
         for (const auto& id : arc.ids) {
             // Find the ValueChange for this id's Y translation (transform [5])
@@ -1155,17 +1163,102 @@ std::string generateFrame(const SvgFile& svgA,
             int    yLineNum = -1;
             int    yValIdx  = -1;
             double yValueAtT = 0.0;
+            bool   foundTransform = false;
+
+            // Bare x/y attribute fallback, used only if no transform/matrix
+            // encoding is present for this id (see ambiguity check below).
+            double xHSpan      = 0.0;
+            bool   foundX       = false;
+            int    xyYLineNum   = -1;
+            int    xyYValIdx    = -1;
+            double xyYValueAtT  = 0.0;
+            bool   foundY       = false;
 
             double tArc = getT(id);
             for (const auto& vc : changes) {
                 if (vc.id != id) continue;
-                if (vc.attrName == "transform" && vc.valueIndex == 4)
+                if (vc.attrName == "transform" && vc.valueIndex == 4) {
                     hSpan = std::fabs(vc.valueB - vc.valueA);
+                    foundTransform = true;
+                }
                 if (vc.attrName == "transform" && vc.valueIndex == 5) {
                     yLineNum  = useB ? vc.lineNumB : vc.lineNumA;
                     yValIdx   = vc.valueIndex;
                     yValueAtT = vc.valueA + (vc.valueB - vc.valueA) * tArc;
+                    foundTransform = true;
                 }
+                if (vc.attrName == "x" && vc.valueIndex == 0) {
+                    xHSpan  = std::fabs(vc.valueB - vc.valueA);
+                    foundX  = true;
+                }
+                if (vc.attrName == "y" && vc.valueIndex == 0) {
+                    xyYLineNum  = useB ? vc.lineNumB : vc.lineNumA;
+                    xyYValIdx   = vc.valueIndex;
+                    xyYValueAtT = vc.valueA + (vc.valueB - vc.valueA) * tArc;
+                    foundY      = true;
+                }
+            }
+
+            bool hasMatrixEncoding = foundTransform;
+            for (const auto& mc : matrixChanges)
+                if (mc.id == id) { hasMatrixEncoding = true; break; }
+            bool hasXY = foundX || foundY;
+
+            // Ambiguous: both a transform/matrix encoding AND bare x/y
+            // attributes changed for this id. Don't guess — skip the arc
+            // for this id and report it once.
+            if (hasMatrixEncoding && hasXY) {
+                if (arcAmbiguousWarned.insert(id).second) {
+                    std::string msg = "WARNING: arc-height: id=\"" + id
+                        + "\" has both a transform/matrix change and bare "
+                          "x/y attribute changes — arc not applied (ambiguous).";
+                    std::cout << msg << "\n";
+                    trace     << msg << "\n";
+                    summary   << msg << "\n";
+                }
+                continue;
+            }
+
+            // Bare x/y path: only used when there is no transform/matrix
+            // encoding at all for this id.
+            if (!hasMatrixEncoding && hasXY) {
+                if (xyYLineNum < 0 || xHSpan < 1e-9) continue;
+                double offset = computeArcOffset(tArc, arc.trimDegrees,
+                                                 arc.peakPercent, xHSpan);
+                double newY = xyYValueAtT - offset;
+
+                int lineIdx = xyYLineNum - 1;
+                if (lineIdx < 0 || lineIdx >= (int)outLines.size()) continue;
+
+                std::string& line = outLines[lineIdx];
+
+                int idx3 = 0;
+                std::string result3;
+                size_t prev3 = 0;
+                bool patched3 = false;
+                for (auto it = std::sregex_iterator(line.begin(), line.end(), numRe2);
+                     it != std::sregex_iterator(); ++it)
+                {
+                    size_t pos = (size_t)it->position();
+                    if (pos > 0 && std::isalpha((unsigned char)line[pos - 1])) continue;
+
+                    if (idx3 == xyYValIdx) {
+                        result3 += line.substr(prev3, pos - prev3);
+                        std::ostringstream sa, sb;
+                        sa << std::fixed << std::setprecision(6) << xyYValueAtT;
+                        sb << std::fixed << std::setprecision(6) << xyYValueAtT;
+                        result3 += formatValue(newY, sa.str(), sb.str());
+                        prev3 = pos + it->str().size();
+                        patched3 = true;
+                        break;
+                    }
+                    ++idx3;
+                }
+                if (patched3) {
+                    result3 += line.substr(prev3);
+                    line = result3;
+                }
+                continue;
             }
 
             if (yLineNum < 0 || hSpan < 1e-9) continue;
