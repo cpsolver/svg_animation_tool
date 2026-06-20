@@ -1199,6 +1199,26 @@ std::string generateFrame(const SvgFile& svgA,
                 }
             }
 
+            // If x changed but y did not (a common way to "wake up" the
+            // arc mechanism without any real vertical motion), y won't
+            // appear in `changes` at all. Fall back to the static y value
+            // already recorded for this element in the base SVG's Phase 2
+            // data, so the arc still has a line/value to patch.
+            if (foundX && !foundY) {
+                auto itElem = base.elements.find(id);
+                if (itElem != base.elements.end()) {
+                    for (const auto& nv : itElem->second.values) {
+                        if (nv.attrName == "y" && nv.valueIndex == 0) {
+                            xyYLineNum  = nv.lineNum;
+                            xyYValIdx   = nv.valueIndex;
+                            xyYValueAtT = nv.value;
+                            foundY      = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
             bool hasMatrixEncoding = foundTransform;
             for (const auto& mc : matrixChanges)
                 if (mc.id == id) { hasMatrixEncoding = true; break; }
@@ -1684,11 +1704,15 @@ int main(int argc, char* argv[]) {
                       << "  idx=" << vc.valueIndex
                       << "  A=" << vc.valueA
                       << "  B=" << vc.valueB << "\n";
-                if (vc.attrName != "transform" && vc.attrName != "y") continue;
+                if (vc.attrName != "transform" && vc.attrName != "x" && vc.attrName != "y") continue;
                 auto& p = posMap[vc.id];
                 if (vc.attrName == "transform") {
                     if (vc.valueIndex == 4) { p.xA = vc.valueA; p.xB = vc.valueB; }
                     if (vc.valueIndex == 5) { p.yA = vc.valueA; p.yB = vc.valueB; }
+                }
+                if (vc.attrName == "x" && vc.valueIndex == 0) {
+                    p.xA = vc.valueA;
+                    p.xB = vc.valueB;
                 }
                 if (vc.attrName == "y" && vc.valueIndex == 0) {
                     p.yA = vc.valueA;
