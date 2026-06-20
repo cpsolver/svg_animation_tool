@@ -136,6 +136,23 @@
  *     output-directory D - Directory for output frames (default
  *                          "frames_svg"). Must not contain a period.
  *
+ *     begin-use-freeze-instead-of-animate
+ *                        - Testing aid for quickly rendering long scripts.
+ *                          While active, every 'animate' is replaced with
+ *                          two freezes instead of an interpolated
+ *                          transition: keyframe A is frozen for the first
+ *                          half of frames-per-step frames, keyframe B for
+ *                          the remaining half. Change detection, spread-out,
+ *                          and arc-height are all skipped for these
+ *                          segments. 'freeze N' directives are unaffected.
+ *
+ *     end-use-freeze-instead-of-animate
+ *                        - Turns off begin-use-freeze-instead-of-animate so
+ *                          subsequent 'animate' directives interpolate
+ *                          normally again. The two directives can be used
+ *                          in pairs to leave some transitions as real
+ *                          animations while fast-rendering the rest.
+ *
  *     Any other token    - If a collecting mode is active (e.g.
  *                          object-ids), added to the active list.
  *                          Otherwise warned and skipped.
@@ -223,12 +240,19 @@ std::ofstream captions;
 // Global variables
 int captions_frames_per_second = 30;
 std::vector<std::string> captionQueue;
+// Parallel to captionQueue: for each queued caption, the index (into the
+// tokens vector returned by loadScript) of the next non-caption token that
+// follows it. Used so captions are only consumed by segments that appear
+// at or after their position in the script, instead of all being available
+// to the very first segment regardless of where they appeared.
+std::vector<int> captionTokenMarker;
 struct CaptionEntry {
     int startFrame;
     int endFrame;
     std::string text;
 };
 std::vector<CaptionEntry> captionEntries;
+int captionQueueIndex = 0;
 
 // Global: parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
@@ -383,8 +407,10 @@ std::vector<std::string> loadScript(const std::string& path) {
                     scriptText[prefix] = normalized;
                 else
                     it->second += " " + normalized;
-                if (prefix == "caption")
+                if (prefix == "caption") {
                     captionQueue.push_back(normalized);
+                    captionTokenMarker.push_back((int)tokens.size());
+                }
             }
 
         } else {
@@ -1265,6 +1291,38 @@ std::string frameToVtt(int frame) {
     return oss.str();
 }
 
+/// Consume all captions accumulated since the last segment AND positioned
+/// at or before the given token index (i.e. captions that appeared earlier
+/// in the script than, or as part of, the current animate/freeze token),
+/// and distribute them evenly across [segStart, segEnd). Each caption gets
+/// an equal share of the frame span; the last caption absorbs any remainder
+/// so the shares sum exactly to the full span. If no captions are pending,
+/// this is a no-op. Uses and advances the global captionQueueIndex.
+void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
+{
+    // Count how many pending captions are positioned at or before the
+    // current token — captions queued for a *later* part of the script
+    // must not be swept up by an earlier segment.
+    int n = 0;
+    while (captionQueueIndex + n < (int)captionQueue.size() &&
+           captionTokenMarker[captionQueueIndex + n] <= currentTokenIndex)
+        ++n;
+    if (n <= 0) return;
+
+    int span = segEnd - segStart;
+    int base = span / n;     // frames per caption, rounded down
+    int rem  = span % n;     // leftover frames, absorbed by the last caption
+
+    int cur = segStart;
+    for (int k = 0; k < n; ++k) {
+        int len = base + (k == n - 1 ? rem : 0);
+        int start = cur;
+        int end   = cur + len;
+        captionEntries.push_back({start, end, captionQueue[captionQueueIndex++]});
+        cur = end;
+    }
+}
+
 
 
 // ------------------------------------------------
@@ -1294,7 +1352,6 @@ int main(int argc, char* argv[]) {
 
     // ── Declare variables ─────────────────────────────────────────────────────
     const std::string scriptPath = argv[1];
-    int captionQueueIndex = 0;
 
     // ── Load script ──────────────────────────────────────────────────────────
     std::vector<std::string> scriptTokens;
@@ -1367,7 +1424,7 @@ int main(int argc, char* argv[]) {
     int         currentArcDeg   = 20;    // updated by arc-degrees
     std::string currentSpreadStart = "top";  // updated by spread-out-start-*-end-*
     std::string currentSpreadEnd   = "top";  // updated by spread-out-start-*-end-*
-    bool        testUseFreezeNotAnimate = false;  // set by test-use-freeze-not-animate
+    bool        testUseFreezeNotAnimate = false;  // toggled by begin/end-use-freeze-instead-of-animate
     // frames_per_step and output_dir are declared above and updated by directives
 
     // Spread entries: one per spread-out directive, each with its own id snapshot
@@ -1472,7 +1529,7 @@ int main(int argc, char* argv[]) {
             const SvgFile& svgA = window[0];
             const SvgFile& svgB = window[1];
 
-            // ── test-use-freeze-not-animate: replace this animate with two
+            // ── begin/end-use-freeze-instead-of-animate: replace this animate with two
             // freezes (svgA for the first half, svgB for the second half),
             // skipping change detection / spread-out / arc / interpolation
             // entirely. Useful for quickly test-rendering a long script.
@@ -1494,7 +1551,7 @@ int main(int argc, char* argv[]) {
                     ++globalFrame;
                 }
 
-                std::string tfMsg = "test-use-freeze-not-animate: '" + svgA.filename
+                std::string tfMsg = "freeze-instead-of-animate: '" + svgA.filename
                                   + "' frozen " + std::to_string(half1) + " frames, '"
                                   + svgB.filename + "' frozen " + std::to_string(half2)
                                   + " frames (in place of animate)";
@@ -1508,8 +1565,7 @@ int main(int argc, char* argv[]) {
                 windowUsed[1] = true;
                 prevWasAnimate = false;
 
-                if (captionQueueIndex < (int)captionQueue.size())
-                    captionEntries.push_back({captionStart, globalFrame, captionQueue[captionQueueIndex++]});
+                consumePendingCaptions(captionStart, globalFrame, (int)i);
 
                 ++i; continue;
             }
@@ -1757,8 +1813,7 @@ int main(int argc, char* argv[]) {
             windowUsed[1] = true;
             prevWasAnimate = true;
 
-            if (captionQueueIndex < (int)captionQueue.size())
-                captionEntries.push_back({captionStart, globalFrame, captionQueue[captionQueueIndex++]});
+            consumePendingCaptions(captionStart, globalFrame, (int)i);
 
             ++i; continue;
         }
@@ -1795,8 +1850,7 @@ int main(int argc, char* argv[]) {
 
             prevWasAnimate = false;
 
-            if (captionQueueIndex < (int)captionQueue.size())
-                captionEntries.push_back({captionStart, globalFrame, captionQueue[captionQueueIndex++]});
+            consumePendingCaptions(captionStart, globalFrame, (int)i);
 
             i += 2; continue;
         }
@@ -1906,13 +1960,22 @@ int main(int argc, char* argv[]) {
             ++i; continue;
         }
 
-        // ── test-use-freeze-not-animate ──────────────────────────────────────
-        if (tok == "test-use-freeze-not-animate") {
+        // ── begin-use-freeze-instead-of-animate / end-use-freeze-instead-of-animate ──
+        if (tok == "begin-use-freeze-instead-of-animate") {
             flushObjectIds();
             collectingMode = "";
             testUseFreezeNotAnimate = true;
-            trace   << "test-use-freeze-not-animate: enabled\n";
-            summary << "test-use-freeze-not-animate: enabled\n";
+            trace   << "begin-use-freeze-instead-of-animate: enabled\n";
+            summary << "begin-use-freeze-instead-of-animate: enabled\n";
+            ++i; continue;
+        }
+
+        if (tok == "end-use-freeze-instead-of-animate") {
+            flushObjectIds();
+            collectingMode = "";
+            testUseFreezeNotAnimate = false;
+            trace   << "end-use-freeze-instead-of-animate: disabled\n";
+            summary << "end-use-freeze-instead-of-animate: disabled\n";
             ++i; continue;
         }
 
@@ -1983,6 +2046,19 @@ int main(int argc, char* argv[]) {
 
     // ── Flush any remaining objects ─────────────────────────────────
     flushObjectIds();
+
+    // ── Warn about any captions that never got attached to a segment ──
+    // (e.g. caption-begin blocks appearing after the last animate/freeze,
+    // with no subsequent segment to display them during).
+    if (captionQueueIndex < (int)captionQueue.size()) {
+        int leftover = (int)captionQueue.size() - captionQueueIndex;
+        std::string capMsg = "WARNING: " + std::to_string(leftover)
+            + " caption(s) appear after the last animate/freeze and were "
+              "not written to the VTT file (no segment to display them during).";
+        std::cout  << capMsg << "\n";
+        trace      << capMsg << "\n";
+        summary    << capMsg << "\n";
+    }
 
    // ── Write captions to VTT file ─────────────────────────────────
      for (const auto& captionSingleEntry : captionEntries) {
