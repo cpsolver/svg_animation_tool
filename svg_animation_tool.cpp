@@ -247,21 +247,6 @@ std::ofstream captions;
 // Global variables
 int captions_frames_per_second = 30;
 
-// Set by 'next-also-bounce-by N'; consumed (and reset to -1) at the end of
-// the very next 'animate'. When > 0, any id that has arc-height applied AND
-// is part of a spread-out-start-top-end-top group, but has no real detected
-// change in that animate segment, is given a synthetic vertical bounce of
-// this many pixels so it still participates in the arc/spread-out timing.
-int nextAlsoBounceByPixels = -1;
-
-// Ids that received a synthetic bounce (via next-also-bounce-by) in the
-// current animate segment. Used by the arc-height code in generateFrame to
-// know which ids should use nextAlsoBounceByPixels directly as the arc's
-// peak height in pixels, instead of deriving peak height from real
-// horizontal motion (which these ids don't have). Cleared at the start of
-// each animate segment.
-std::set<std::string> bouncedIds;
-
 std::vector<std::string> captionQueue;
 // Parallel to captionQueue: for each queued caption, the index (into the
 // tokens vector returned by loadScript) of the next non-caption token that
@@ -1258,24 +1243,9 @@ std::string generateFrame(const SvgFile& svgA,
             // Bare x/y path: only used when there is no transform/matrix
             // encoding at all for this id.
             if (!hasMatrixEncoding && hasXY) {
-
-                trace << "Bounced object count is " << bouncedIds.count(id) << ":\n";
-
-                bool isBounced = bouncedIds.count(id) > 0;
-                if (!isBounced && (xyYLineNum < 0 || xHSpan < 1e-9)) continue;
-                if (xyYLineNum < 0) continue;  // still need a y line to patch
-                double offset;
-                if (isBounced) {
-                    // No real horizontal motion to scale against — use the
-                    // next-also-bounce-by pixel value directly as the peak
-                    // height (peakPercent=100 over a "span" of that many
-                    // pixels gives exactly that many pixels at the peak).
-                    offset = computeArcOffset(tArc, arc.trimDegrees,
-                                              100, (double)nextAlsoBounceByPixels);
-                } else {
-                    offset = computeArcOffset(tArc, arc.trimDegrees,
-                                              arc.peakPercent, xHSpan);
-                }
+                if (xyYLineNum < 0 || xHSpan < 1e-9) continue;
+                double offset = computeArcOffset(tArc, arc.trimDegrees,
+                                                 arc.peakPercent, xHSpan);
                 double newY = xyYValueAtT - offset;
 
                 int lineIdx = xyYLineNum - 1;
@@ -1725,64 +1695,6 @@ int main(int argc, char* argv[]) {
             std::set<std::string> changedIds;
             detectChanges(svgA, svgB, changedIds);
 
-            // ── next-also-bounce-by: give a synthetic vertical "y" change to
-            // any id that has arc-height applied and is part of a
-            // spread-out-start-top-end-top group, but has no real detected
-            // change in this segment — so it still participates in arc and
-            // spread-out timing. valueA == valueB (zero net drift): the
-            // only visible vertical motion comes from the arc offset itself,
-            // applied later in generateFrame using nextAlsoBounceByPixels as
-            // the peak height directly (see bouncedIds). One-shot: reset at
-            // the end of this animate segment (after frame generation).
-            bouncedIds.clear();
-            if (nextAlsoBounceByPixels > 0) {
-                std::set<std::string> arcIds;
-                for (const auto& arc : arcEntries)
-                    for (const auto& id : arc.ids)
-                        arcIds.insert(id);
-
-                std::set<std::string> topTopIds;
-                for (const auto& se : spreadEntries)
-                    if (se.startDir == "top" && se.endDir == "top")
-                        for (const auto& id : se.ids)
-                            topTopIds.insert(id);
-
-                for (const auto& id : arcIds) {
-                    if (!topTopIds.count(id)) continue;
-                    if (changedIds.count(id)) continue;  // already moving for real
-
-                    auto itElem = svgA.elements.find(id);
-                    if (itElem == svgA.elements.end()) continue;
-                    int    yLine  = -1;
-                    double yValue = 0.0;
-                    for (const auto& nv : itElem->second.values) {
-                        if (nv.attrName == "y" && nv.valueIndex == 0) {
-                            yLine  = nv.lineNum;
-                            yValue = nv.value;
-                            break;
-                        }
-                    }
-                    if (yLine < 0) continue;  // no static y attribute to bounce
-
-                    ValueChange vc;
-                    vc.id         = id;
-                    vc.attrName   = "y";
-                    vc.lineNumA   = yLine;
-                    vc.lineNumB   = yLine;
-                    vc.valueIndex = 0;
-                    vc.valueA     = yValue;
-                    vc.valueB     = yValue;  // zero net drift; arc supplies all motion
-                    changes.push_back(vc);
-                    changedIds.insert(id);
-                    bouncedIds.insert(id);
-
-                    trace << "  next-also-bounce-by: id=\"" << id
-                          << "\"  line=" << yLine
-                          << "  y=" << yValue
-                          << "  peakPixels=" << nextAlsoBounceByPixels << "\n";
-                }
-            }
-
             // ── Step 1: spread-out timing ────────────────────────────────────
             // Build a quick lookup: id -> {xA, yA, xB, yB}
             struct Pos { double xA=0, yA=0, xB=0, yB=0; };
@@ -2021,9 +1933,6 @@ int main(int argc, char* argv[]) {
 
             consumePendingCaptions(captionStart, globalFrame, (int)i);
 
-            nextAlsoBounceByPixels = -1;  // one-shot: reset now that frame generation is done
-            bouncedIds.clear();
-
             ++i; continue;
         }
 
@@ -2142,19 +2051,6 @@ int main(int argc, char* argv[]) {
             if (val != -1) currentArcDeg = val;
             trace   << "arc-degrees: " << currentArcDeg << "\n";
             summary << "arc-degrees   : " << currentArcDeg << "\n";
-            ++i; continue;
-        }
-
-        // ── next-also-bounce-by N ─────────────────────────────────────────────
-        if (tok == "next-also-bounce-by") {
-            int val = consumeOptionalInt(i);
-            if (val > 0) {
-                nextAlsoBounceByPixels = val;
-                trace   << "next-also-bounce-by: " << val << " pixels\n";
-                summary << "next-also-bounce-by: " << val << " pixels\n";
-            } else {
-                std::cout << "WARNING: next-also-bounce-by requires a positive integer — ignored.\n";
-            }
             ++i; continue;
         }
 
