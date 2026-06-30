@@ -825,6 +825,22 @@ std::vector<MatrixChange>           matrixChanges;
 std::vector<ArcEntry>               arcEntries;
 std::map<std::string, ObjectTiming> timingMap;
 
+// Per-segment animation diagnostic: tracks the first, last-A-base, first-B-base,
+// and last computed values for each changed attribute, observed as frames are
+// written. Cleared at the start of each animate segment; written to trace at end.
+struct AnimDiagEntry {
+    std::string id;
+    std::string attrName;
+    int         valueIndex = 0;
+    double      firstValue  = 0.0;  // value written on the very first frame
+    double      lastAValue  = 0.0;  // last value written while base == svgA
+    double      firstBValue = 0.0;  // first value written while base == svgB
+    double      lastValue   = 0.0;  // value written on the very last frame
+    bool        seenFirst   = false;
+    bool        seenB       = false;
+};
+std::map<std::string, AnimDiagEntry> animDiag;
+
 /// Compare two parsed SVGs, fill the global `changes` and `matrixChanges`.
 /// Detail goes to trace file; summary line goes to both stdout and summary file.
 /// transform="matrix(...)" changes are captured in the global matrixChanges
@@ -1069,6 +1085,35 @@ std::string generateFrame(const SvgFile& svgA,
 
     // ── Scalar ValueChange interpolation (unchanged behaviour) ──────────────
     for (const auto& vc : changes) {
+        // Diagnostic: on frame 0 only, log the four boundary values so
+        // discontinuities at the A→B base-switch midpoint are visible.
+        if (frameIndex == 0 && expandedFrames > 1) {
+            auto tAt = [&](int f) -> double {
+                double tL = (double)f / (double)(expandedFrames - 1);
+                // Use per-object timing if available, else global smootherstep
+                auto it = timingMap.find(vc.id);
+                if (it == timingMap.end()) return smootherstep(tL);
+                const ObjectTiming& ot = it->second;
+                int span = ot.endFrame - ot.startFrame;
+                if (span <= 0) return 1.0;
+                double local = std::clamp((double)(f - ot.startFrame) / span, 0.0, 1.0);
+                return smootherstep(local);
+            };
+            int lastA  = midFrame - 1;
+            int firstB = midFrame;
+            double vInit   = vc.valueA;
+            double vLastA  = vc.valueA + (vc.valueB - vc.valueA) * tAt(lastA);
+            double vFirstB = vc.valueA + (vc.valueB - vc.valueA) * tAt(firstB);
+            double vFinal  = vc.valueB;
+            trace << "  anim: id=\"" << vc.id << "\""
+                  << "  attr=" << vc.attrName
+                  << "  [" << vc.valueIndex << "]"
+                  << "  init=" << vInit
+                  << "  lastA" << "=" << vLastA
+                  << "  firstB" << "=" << vFirstB
+                  << "  final=" << vFinal << "\n";
+        }
+
         int lineNum = useB ? vc.lineNumB : vc.lineNumA;
         int lineIdx = lineNum - 1;
         if (lineIdx < 0 || lineIdx >= (int)outLines.size()) continue;
@@ -1095,6 +1140,16 @@ std::string generateFrame(const SvgFile& svgA,
                 result += formatValue(vi, srcA_str.str(), srcB_str.str());
                 prev    = pos + it->str().size();
                 patched = true;
+
+                // Diagnostic: observe the actual computed value at this patch point.
+                std::string diagKey = vc.id + "|" + vc.attrName + "|" + std::to_string(vc.valueIndex);
+                auto& de = animDiag[diagKey];
+                de.id = vc.id; de.attrName = vc.attrName; de.valueIndex = vc.valueIndex;
+                if (!de.seenFirst) { de.firstValue = vi; de.seenFirst = true; }
+                if (!useB) de.lastAValue = vi;
+                if (useB && !de.seenB) { de.firstBValue = vi; de.seenB = true; }
+                de.lastValue = vi;
+
                 break;
             }
             ++idx;
@@ -1113,6 +1168,34 @@ std::string generateFrame(const SvgFile& svgA,
     static const std::regex matRe(R"(matrix\([^)]*\))");
 
     for (const auto& mc : matrixChanges) {
+        // Diagnostic: on frame 0 only, log tx/ty boundary values.
+        if (frameIndex == 0 && expandedFrames > 1) {
+            auto tAt = [&](int f) -> double {
+                double tL = (double)f / (double)(expandedFrames - 1);
+                auto it = timingMap.find(mc.id);
+                if (it == timingMap.end()) return smootherstep(tL);
+                const ObjectTiming& ot = it->second;
+                int span = ot.endFrame - ot.startFrame;
+                if (span <= 0) return 1.0;
+                double local = std::clamp((double)(f - ot.startFrame) / span, 0.0, 1.0);
+                return smootherstep(local);
+            };
+            int lastA  = midFrame - 1;
+            int firstB = midFrame;
+            auto txAt = [&](double t) { return mc.decompA.tx + (mc.decompB.tx - mc.decompA.tx) * t; };
+            auto tyAt = [&](double t) { return mc.decompA.ty + (mc.decompB.ty - mc.decompA.ty) * t; };
+            trace << "  anim(matrix): id=\"" << mc.id << "\""
+                  << "  tx: init=" << mc.decompA.tx
+                  << "  lastA" << "=" << txAt(tAt(lastA))
+                  << "  firstB" << "=" << txAt(tAt(firstB))
+                  << "  final=" << mc.decompB.tx << "\n"
+                  << "  anim(matrix): id=\"" << mc.id << "\""
+                  << "  ty: init=" << mc.decompA.ty
+                  << "  lastA" << "=" << tyAt(tAt(lastA))
+                  << "  firstB" << "=" << tyAt(tAt(firstB))
+                  << "  final=" << mc.decompB.ty << "\n";
+        }
+
         double tEased = getT(mc.id);
         AffineDecomp interp = interpDecomp(mc.decompA, mc.decompB, tEased);
 
@@ -1132,6 +1215,20 @@ std::string generateFrame(const SvgFile& svgA,
 
         double a, b, c, d, e, f;
         recomposeMatrix(interp, a, b, c, d, e, f);
+
+        // Diagnostic: observe tx (e) and ty (f) as actually computed.
+        for (int txty = 0; txty < 2; ++txty) {
+            double val = (txty == 0) ? e : f;
+            std::string diagKey = mc.id + "|matrix_t" + (txty == 0 ? "x" : "y") + "|0";
+            auto& de = animDiag[diagKey];
+            de.id = mc.id;
+            de.attrName = (txty == 0) ? "matrix_tx" : "matrix_ty";
+            de.valueIndex = 0;
+            if (!de.seenFirst) { de.firstValue = val; de.seenFirst = true; }
+            if (!useB) de.lastAValue = val;
+            if (useB && !de.seenB) { de.firstBValue = val; de.seenB = true; }
+            de.lastValue = val;
+        }
 
         // Format the six values with enough precision (6 decimal places)
         std::ostringstream oss;
@@ -1694,6 +1791,7 @@ int main(int argc, char* argv[]) {
             // Phase 3 — detect changes (fills global changes / matrixChanges)
             std::set<std::string> changedIds;
             detectChanges(svgA, svgB, changedIds);
+            animDiag.clear();
 
             // ── Step 1: spread-out timing ────────────────────────────────────
             // Build a quick lookup: id -> {xA, yA, xB, yB}
@@ -1926,6 +2024,24 @@ int main(int argc, char* argv[]) {
             for (const auto& id : changedIds)
                 meldSection += "#  " + id + "\n";
             meldSection += "\n";
+
+            // Write animation diagnostics — actual observed values at boundaries
+            if (!animDiag.empty()) {
+                trace << "  animation value diagnostics:\n";
+                for (const auto& kv : animDiag) {
+                    const AnimDiagEntry& de = kv.second;
+                    trace << "    id=\"" << de.id << "\""
+                          << "  attr=" << de.attrName
+                          << "  [" << de.valueIndex << "]"
+                          << "  first=" << de.firstValue
+                          << "  lastA=" << de.lastAValue;
+                    if (de.seenB)
+                        trace << "  firstB=" << de.firstBValue;
+                    else
+                        trace << "  firstB=(none)";
+                    trace << "  last=" << de.lastValue << "\n";
+                }
+            }
 
             windowUsed[0] = true;
             windowUsed[1] = true;
