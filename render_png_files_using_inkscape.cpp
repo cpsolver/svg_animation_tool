@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -30,6 +31,8 @@ const fs::path INPUT_DIR = "frames_svg";
 const fs::path OUTPUT_DIR = "frames_png";
 const fs::path TRACE_PATH = "output_trace_render.txt";
 const std::chrono::seconds COOLDOWN(2);
+
+bool use_low_resolution = false;
 
 std::ofstream g_trace;
 
@@ -67,31 +70,43 @@ std::vector<fs::path> gather_input_files() {
     return files;
 }
 
-bool run_inkscape(const fs::path& input, const fs::path& output) {
+bool convert_svg_to_png(const fs::path& input, const fs::path& output) {
     pid_t pid = fork();
     if (pid < 0) {
-        trace("ERROR: fork() failed before running inkscape on " + input.string());
+        trace("ERROR: fork() failed before running Inkscape or ImageMagick on " + input.string());
         return false;
     }
     if (pid == 0) {
-        std::string export_arg = "--export-filename=" + output.string();
         // execlp searches PATH itself in the child process; no shell
         // is ever started.
-        execlp("inkscape", "inkscape", input.c_str(), "--export-type=png",
-               export_arg.c_str(), static_cast<char*>(nullptr));
-        // Only reached if exec itself failed (e.g. inkscape not found).
+        if (!use_low_resolution) {
+            std::string export_arg = "--export-filename=" + output.string();
+            execlp("inkscape", "inkscape", input.c_str(), "--export-type=png",
+                   export_arg.c_str(), static_cast<char*>(nullptr));
+        } else {
+            execlp("convert", "convert", "-density", "12", "-resize", "256x256", "-strip",
+                   "-colors", "16", "-depth", "8", input.c_str(),
+                   output.c_str(), static_cast<char*>(nullptr));
+        }
+        // Only reached if exec itself failed (e.g. program not found).
         _exit(127);
     }
     int status = 0;
     waitpid(pid, &status, 0);
     if (!(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
-        trace("ERROR: inkscape exited abnormally while converting " + input.string());
+        trace("ERROR: Inkscape or ImageMagick exited abnormally while converting " + input.string());
         return false;
     }
     return fs::exists(output);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "lowres") {
+            use_low_resolution = true;
+            break;
+        }
+    }
     try {
         fs::create_directories(OUTPUT_DIR); // no error if it already exists
 
@@ -133,7 +148,7 @@ int main() {
             std::cout << "." << std::flush;
             trace("Rendering " + input.string() + " with inkscape");
 //            trace("Rendering " + input.string() + " -> " + output.string() + " with inkscape");
-            bool ok = run_inkscape(input, output);
+            bool ok = convert_svg_to_png(input, output);
             if (ok) {
                 rendered_count++;
                 prev_output = output;
