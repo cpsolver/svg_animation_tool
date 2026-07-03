@@ -143,22 +143,22 @@
  *     output-directory D - Directory for output frames (default
  *                          "frames_svg"). Must not contain a period.
  *
- *     begin-use-freeze-instead-of-animate
- *                        - Testing aid for quickly rendering long scripts.
- *                          While active, every 'animate' is replaced with
- *                          two freezes instead of an interpolated
- *                          transition: keyframe A is frozen for the first
- *                          half of frames-per-step frames, keyframe B for
- *                          the remaining half. Change detection, spread-out,
- *                          and arc-height are all skipped for these
- *                          segments. 'freeze N' directives are unaffected.
+ *     skip-mode-on       - Testing aid for quickly previewing long scripts.
+ *                          While active, all calculations run in full for
+ *                          every frame (detectChanges, spread-out, arc,
+ *                          generateFrame) so the trace file shows complete
+ *                          information, but SVG files are only written for
+ *                          three frames per animate segment (the first frame,
+ *                          the frame nearest 1/3 through, and the frame
+ *                          nearest 2/3 through), and only one frame per
+ *                          freeze segment (the first). globalFrame still
+ *                          counts all frames, so output frame numbers have
+ *                          gaps but remain globally consistent.
  *
- *     end-use-freeze-instead-of-animate
- *                        - Turns off begin-use-freeze-instead-of-animate so
- *                          subsequent 'animate' directives interpolate
- *                          normally again. The two directives can be used
- *                          in pairs to leave some transitions as real
- *                          animations while fast-rendering the rest.
+ *     skip-mode-off      - Turns off skip-mode-on; subsequent animate and
+ *                          freeze segments write all frames normally. The
+ *                          two directives can be used in pairs to selectively
+ *                          skip some segments while fully rendering others.
  *
  *     Any other token    - If a collecting mode is active (e.g.
  *                          object-ids), added to the active list.
@@ -1085,35 +1085,6 @@ std::string generateFrame(const SvgFile& svgA,
 
     // ── Scalar ValueChange interpolation (unchanged behaviour) ──────────────
     for (const auto& vc : changes) {
-        // Diagnostic: on frame 0 only, log the four boundary values so
-        // discontinuities at the A→B base-switch midpoint are visible.
-        if (frameIndex == 0 && expandedFrames > 1) {
-            auto tAt = [&](int f) -> double {
-                double tL = (double)f / (double)(expandedFrames - 1);
-                // Use per-object timing if available, else global smootherstep
-                auto it = timingMap.find(vc.id);
-                if (it == timingMap.end()) return smootherstep(tL);
-                const ObjectTiming& ot = it->second;
-                int span = ot.endFrame - ot.startFrame;
-                if (span <= 0) return 1.0;
-                double local = std::clamp((double)(f - ot.startFrame) / span, 0.0, 1.0);
-                return smootherstep(local);
-            };
-            int lastA  = midFrame - 1;
-            int firstB = midFrame;
-            double vInit   = vc.valueA;
-            double vLastA  = vc.valueA + (vc.valueB - vc.valueA) * tAt(lastA);
-            double vFirstB = vc.valueA + (vc.valueB - vc.valueA) * tAt(firstB);
-            double vFinal  = vc.valueB;
-            trace << "  anim: id=\"" << vc.id << "\""
-                  << "  attr=" << vc.attrName
-                  << "  [" << vc.valueIndex << "]"
-                  << "  init=" << vInit
-                  << "  lastA" << "=" << vLastA
-                  << "  firstB" << "=" << vFirstB
-                  << "  final=" << vFinal << "\n";
-        }
-
         int lineNum = useB ? vc.lineNumB : vc.lineNumA;
         int lineIdx = lineNum - 1;
         if (lineIdx < 0 || lineIdx >= (int)outLines.size()) continue;
@@ -1168,34 +1139,6 @@ std::string generateFrame(const SvgFile& svgA,
     static const std::regex matRe(R"(matrix\([^)]*\))");
 
     for (const auto& mc : matrixChanges) {
-        // Diagnostic: on frame 0 only, log tx/ty boundary values.
-        if (frameIndex == 0 && expandedFrames > 1) {
-            auto tAt = [&](int f) -> double {
-                double tL = (double)f / (double)(expandedFrames - 1);
-                auto it = timingMap.find(mc.id);
-                if (it == timingMap.end()) return smootherstep(tL);
-                const ObjectTiming& ot = it->second;
-                int span = ot.endFrame - ot.startFrame;
-                if (span <= 0) return 1.0;
-                double local = std::clamp((double)(f - ot.startFrame) / span, 0.0, 1.0);
-                return smootherstep(local);
-            };
-            int lastA  = midFrame - 1;
-            int firstB = midFrame;
-            auto txAt = [&](double t) { return mc.decompA.tx + (mc.decompB.tx - mc.decompA.tx) * t; };
-            auto tyAt = [&](double t) { return mc.decompA.ty + (mc.decompB.ty - mc.decompA.ty) * t; };
-            trace << "  anim(matrix): id=\"" << mc.id << "\""
-                  << "  tx: init=" << mc.decompA.tx
-                  << "  lastA" << "=" << txAt(tAt(lastA))
-                  << "  firstB" << "=" << txAt(tAt(firstB))
-                  << "  final=" << mc.decompB.tx << "\n"
-                  << "  anim(matrix): id=\"" << mc.id << "\""
-                  << "  ty: init=" << mc.decompA.ty
-                  << "  lastA" << "=" << tyAt(tAt(lastA))
-                  << "  firstB" << "=" << tyAt(tAt(firstB))
-                  << "  final=" << mc.decompB.ty << "\n";
-        }
-
         double tEased = getT(mc.id);
         AffineDecomp interp = interpDecomp(mc.decompA, mc.decompB, tEased);
 
@@ -1635,7 +1578,7 @@ int main(int argc, char* argv[]) {
     int         currentArcDeg   = 20;    // updated by arc-degrees
     std::string currentSpreadStart = "top";  // updated by spread-out-start-*-end-*
     std::string currentSpreadEnd   = "top";  // updated by spread-out-start-*-end-*
-    bool        testUseFreezeNotAnimate = false;  // toggled by begin/end-use-freeze-instead-of-animate
+    bool        skipMode = false;  // toggled by skip-mode-on / skip-mode-off
     // frames_per_step and output_dir are declared above and updated by directives
 
     // Spread entries: one per spread-out directive, each with its own id snapshot
@@ -1739,47 +1682,6 @@ int main(int argc, char* argv[]) {
 
             const SvgFile& svgA = window[0];
             const SvgFile& svgB = window[1];
-
-            // ── begin/end-use-freeze-instead-of-animate: replace this animate with two
-            // freezes (svgA for the first half, svgB for the second half),
-            // skipping change detection / spread-out / arc / interpolation
-            // entirely. Useful for quickly test-rendering a long script.
-            if (testUseFreezeNotAnimate) {
-                int half1 = frames_per_step / 2;
-                int half2 = frames_per_step - half1;
-
-                std::string svgAContent, svgBContent;
-                for (const auto& ln : svgA.lines) svgAContent += ln + '\n';
-                for (const auto& ln : svgB.lines) svgBContent += ln + '\n';
-
-                int firstFrameNumTF = globalFrame;
-                for (int f = 0; f < half1; ++f) {
-                    writeFrame(output_dir, globalFrame, DIGITS, svgAContent);
-                    ++globalFrame;
-                }
-                for (int f = 0; f < half2; ++f) {
-                    writeFrame(output_dir, globalFrame, DIGITS, svgBContent);
-                    ++globalFrame;
-                }
-
-                std::string tfMsg = "freeze-instead-of-animate: '" + svgA.filename
-                                  + "' frozen " + std::to_string(half1) + " frames, '"
-                                  + svgB.filename + "' frozen " + std::to_string(half2)
-                                  + " frames (in place of animate)";
-                std::cout  << tfMsg << "\n";
-                trace      << tfMsg << "\n";
-                summary    << tfMsg << "\n"
-                           << "  " << std::to_string(globalFrame - firstFrameNumTF)
-                           << " frames written" << "\n\n";
-
-                windowUsed[0] = true;
-                windowUsed[1] = true;
-                prevWasAnimate = false;
-
-                consumePendingCaptions(captionStart, globalFrame, (int)i);
-
-                ++i; continue;
-            }
 
             ++animateCount;
             std::string animHeader = "From: " + svgA.filename + "\n"
@@ -2009,7 +1911,15 @@ int main(int argc, char* argv[]) {
                 std::string svgOut = generateFrame(svgA, svgB,
                                                    f, expandedFrames, midFrame,
                                                    tEased);
-                writeFrame(output_dir, globalFrame, DIGITS, svgOut);
+                // In skip mode, only write the first frame, the 1/3 frame,
+                // and the 2/3 frame; all others are skipped but globalFrame
+                // still increments so frame numbers remain consistent.
+                bool shouldWrite = !skipMode
+                                || f == fStart
+                                || f == expandedFrames / 3
+                                || f == (2 * expandedFrames) / 3;
+                if (shouldWrite)
+                    writeFrame(output_dir, globalFrame, DIGITS, svgOut);
                 ++globalFrame;
             }
 
@@ -2073,7 +1983,10 @@ int main(int argc, char* argv[]) {
             std::string frozenSvg;
             for (const auto& ln : current.lines) frozenSvg += ln + '\n';
             for (int f = 0; f < freezeN; ++f) {
-                writeFrame(output_dir, globalFrame, DIGITS, frozenSvg);
+                // In skip mode, only write the first freeze frame;
+                // all duplicates are skipped but globalFrame still increments.
+                if (!skipMode || f == 0)
+                    writeFrame(output_dir, globalFrame, DIGITS, frozenSvg);
                 ++globalFrame;
             }
 
@@ -2194,22 +2107,28 @@ int main(int argc, char* argv[]) {
             ++i; continue;
         }
 
-        // ── begin-use-freeze-instead-of-animate / end-use-freeze-instead-of-animate ──
-        if (tok == "begin-use-freeze-instead-of-animate") {
+        // ── skip-mode-on / skip-mode-off ─────────────────────────────────────
+        // When skip mode is on, animate segments still run all calculations
+        // (detectChanges, spread-out, arc, generateFrame for every frame) so
+        // the trace file shows complete information, but only three frames are
+        // written per animate segment (first, ~1/3, ~2/3) and only one frame
+        // per freeze segment. globalFrame still counts all frames, so output
+        // frame numbers have gaps but remain globally consistent.
+        if (tok == "skip-mode-on") {
             flushObjectIds();
             collectingMode = "";
-            testUseFreezeNotAnimate = true;
-            trace   << "begin-use-freeze-instead-of-animate: enabled\n";
-            summary << "begin-use-freeze-instead-of-animate: enabled\n";
+            skipMode = true;
+            trace   << "skip-mode-on\n";
+            summary << "skip-mode-on\n";
             ++i; continue;
         }
 
-        if (tok == "end-use-freeze-instead-of-animate") {
+        if (tok == "skip-mode-off") {
             flushObjectIds();
             collectingMode = "";
-            testUseFreezeNotAnimate = false;
-            trace   << "end-use-freeze-instead-of-animate: disabled\n";
-            summary << "end-use-freeze-instead-of-animate: disabled\n";
+            skipMode = false;
+            trace   << "skip-mode-off\n";
+            summary << "skip-mode-off\n";
             ++i; continue;
         }
 
