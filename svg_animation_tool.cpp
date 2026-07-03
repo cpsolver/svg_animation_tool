@@ -160,6 +160,15 @@
  *                          two directives can be used in pairs to selectively
  *                          skip some segments while fully rendering others.
  *
+ *     desired-timestamp T - Check actual elapsed time against a desired
+ *                          cumulative timestamp T. T may be decimal seconds
+ *                          (e.g. "3.5") or MM:SS (e.g. "1:30"). Reports how
+ *                          many frames are over or under the desired time
+ *                          since the previous desired-timestamp (or script
+ *                          start if this is the first). Output appears on
+ *                          stdout, in the trace file, and in the sequence
+ *                          section of the summary file.
+ *
  *     Any other token    - If a collecting mode is active (e.g.
  *                          object-ids), added to the active list.
  *                          Otherwise warned and skipped.
@@ -243,6 +252,17 @@ namespace fs = std::filesystem;
 std::ofstream trace;
 std::ofstream summary;
 std::ofstream captions;
+
+// Accumulated per-segment info written to the summary file at the end.
+std::string sequenceInfo;
+// Filename of the most recent svgB — written as the final entry in sequenceInfo.
+std::string lastSvgBFilename;
+
+// State for desired-timestamp directive: tracks the globalFrame and cumulative
+// desired seconds at the most recent desired-timestamp, so each new directive
+// reports frames over/under relative to the preceding one (not the script start).
+int    desiredTimestampLastFrame   = 0;
+double desiredTimestampLastDesired = 0.0;
 
 // Global variables
 int captions_frames_per_second = 30;
@@ -859,7 +879,7 @@ void detectChanges(
     int sharedIds   = 0;
     int changedVals = 0;
 
-    // Collect the set of ids that actually have changes (for summary and meld)
+    // Collect the set of ids that actually have changes (for summary)
     std::set<std::string>& changedIds = changedIdsOut;
     changedIds.clear();
 
@@ -1445,6 +1465,15 @@ std::string frameToVtt(int frame) {
     return oss.str();
 }
 
+/// Format a frame count as compact seconds with one decimal place,
+/// no leading zeros (e.g. 612 frames at 30fps -> "20.4").
+std::string frameToSeconds(int frame) {
+    double secs = (double)frame / (double)captions_frames_per_second;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << secs;
+    return oss.str();
+}
+
 /// Consume all captions accumulated since the last segment AND positioned
 /// at or before the given token index (i.e. captions that appeared earlier
 /// in the script than, or as part of, the current animate/freeze token),
@@ -1567,7 +1596,6 @@ int main(int argc, char* argv[]) {
     int  animateCount      = 0;
     bool prevWasAnimate    = false;
     bool firstSvgSeen      = false;  // locks output_dir and triggers cleanup
-    std::string meldSection;  // accumulated meld lines, written at end
     const int DIGITS    = 4;
 
     // ── Directive state ──────────────────────────────────────────────────────
@@ -1929,11 +1957,12 @@ int main(int argc, char* argv[]) {
             summary << "  " << std::to_string(globalFrame - firstFrameNum)
                                    << " frames written" << "\n\n";
 
-            // Accumulate meld entry for this segment
-            meldSection += "meld  " + svgA.filename + "  " + svgB.filename + "\n\n";
+            // Accumulate sequence info for this segment
+            sequenceInfo += svgA.filename + "\n\n";
             for (const auto& id : changedIds)
-                meldSection += "#  " + id + "\n";
-            meldSection += "\n";
+                sequenceInfo += "  " + id + "\n";
+            sequenceInfo += "\n  time " + frameToSeconds(globalFrame) + "\n\n";
+            lastSvgBFilename = svgB.filename;
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
@@ -1994,6 +2023,11 @@ int main(int argc, char* argv[]) {
                 + "  " + std::to_string(freezeN) + " frames written" + "\n";
             std::cout  << freezeLine << "\n";
             summary    << freezeLine << "\n";
+
+            sequenceInfo += current.filename + "\n\n"
+                         + "  freeze\n"
+                         + "\n  time " + frameToSeconds(globalFrame) + "\n\n";
+            lastSvgBFilename = "";  // freeze has no B keyframe
 
             prevWasAnimate = false;
 
@@ -2160,6 +2194,63 @@ int main(int argc, char* argv[]) {
             ++i; continue;
         }
 
+        // ── desired-timestamp ─────────────────────────────────────────────────
+        // Accepts a time as decimal seconds (e.g. "3.5") or MM:SS (e.g. "1:30").
+        // Reports how many frames over or under the actual frame count is
+        // relative to the desired elapsed time since the previous
+        // desired-timestamp (or the start of the script if this is the first).
+        if (tok == "desired-timestamp") {
+            flushObjectIds();
+            collectingMode = "";
+            if (i + 1 < scriptTokens.size()) {
+                const std::string& tstr = scriptTokens[i + 1];
+                double desiredSecs = -1.0;
+
+                // Try MM:SS format first
+                auto colon = tstr.find(':');
+                if (colon != std::string::npos) {
+                    try {
+                        int mins = std::stoi(tstr.substr(0, colon));
+                        double secs = std::stod(tstr.substr(colon + 1));
+                        desiredSecs = mins * 60.0 + secs;
+                    } catch (...) {}
+                } else {
+                    // Try plain seconds (int or decimal)
+                    try { desiredSecs = std::stod(tstr); } catch (...) {}
+                }
+
+                if (desiredSecs >= 0.0) {
+                    double desiredInterval = desiredSecs - desiredTimestampLastDesired;
+                    int    actualFrames    = globalFrame - desiredTimestampLastFrame;
+                    double desiredFramesD  = desiredInterval * captions_frames_per_second;
+                    int    frameDiff       = actualFrames - (int)std::round(desiredFramesD);
+
+                    std::string diffMsg;
+                    if (frameDiff > 0)
+                        diffMsg = std::to_string(frameDiff) + " frames too many";
+                    else if (frameDiff < 0)
+                        diffMsg = std::to_string(-frameDiff) + " frames too few";
+                    else
+                        diffMsg = "exact";
+
+                    std::string dtMsg = "  " + diffMsg;
+                    std::cout  << dtMsg << "\n";
+                    trace      << dtMsg << "\n";
+                    sequenceInfo += dtMsg + "\n\n";
+
+                    desiredTimestampLastFrame   = globalFrame;
+                    desiredTimestampLastDesired = desiredSecs;
+                    ++i;  // consume the time token
+                } else {
+                    std::cout << "WARNING: desired-timestamp requires a time value "
+                                 "(seconds or MM:SS) — ignored.\n";
+                }
+            } else {
+                std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
+            }
+            ++i; continue;
+        }
+
         // ── output-directory ─────────────────────────────────────────────────
         if (tok == "output-directory") {
             flushObjectIds();
@@ -2244,9 +2335,12 @@ int main(int argc, char* argv[]) {
                << "══════════════════════════════════════════════════\n";
     summary    << "\n" << doneMsg << "\n";
 
-    // Write meld section at the end of the summary
-    if (!meldSection.empty())
-        summary << "\nMeld diff commands with ID reminders:\n" << meldSection;
+    // Write sequence info at the end of the summary
+    if (!sequenceInfo.empty()) {
+        if (!lastSvgBFilename.empty())
+            sequenceInfo += lastSvgBFilename + "\n";
+        summary << "\nSequence:\n" << sequenceInfo;
+    }
     trace      << "\n" << doneMsg << "\n";
 
     return 0;
