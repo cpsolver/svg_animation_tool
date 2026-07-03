@@ -108,10 +108,15 @@ int main(int argc, char* argv[]) {
         }
     }
     try {
+        if (fs::exists(OUTPUT_DIR)) {
+            for (const auto& entry : fs::directory_iterator(OUTPUT_DIR)) {
+                if (entry.is_regular_file() && entry.path().extension() == ".png") {
+                    fs::remove(entry.path());
+                }
+            }
+        }
         fs::create_directories(OUTPUT_DIR); // no error if it already exists
-
         g_trace.open(TRACE_PATH, std::ios::out | std::ios::trunc);
-
         std::vector<fs::path> inputs = gather_input_files();
         trace("Found " + std::to_string(inputs.size()) + " frame(s) in " +
               INPUT_DIR.string());
@@ -144,7 +149,6 @@ int main(int argc, char* argv[]) {
                 trace("ERROR: copy failed (" + ec.message() +
                       "); falling back to inkscape for " + input.string());
             }
-
             std::cout << "." << std::flush;
             trace("Rendering " + input.string() + " with inkscape");
 //            trace("Rendering " + input.string() + " -> " + output.string() + " with inkscape");
@@ -159,8 +163,9 @@ int main(int argc, char* argv[]) {
                       "; it will not be used as a copy source");
                 have_prev = false;
             }
-
-            std::this_thread::sleep_for(COOLDOWN);
+            if (!use_low_resolution) {
+                std::this_thread::sleep_for(COOLDOWN);
+            }
         }
 
         trace("Finished: " + std::to_string(rendered_count) +
