@@ -77,7 +77,9 @@
  *                      accumulated under the prefix name. Multiple
  *                      blocks with the same prefix are concatenated
  *                      with a single space. Examples:
- *                        vocal-begin, comment-begin, animate-begin
+ *                        vocal-begin, comment-begin, animate-begin,
+ *                        title-begin (used as the header of the narration
+ *                        output file output_narration.txt)
  *                      All text blocks are written to the trace file.
  *                      Script directives inside a block are treated as
  *                      plain text and are not executed.
@@ -252,6 +254,7 @@ namespace fs = std::filesystem;
 std::ofstream trace;
 std::ofstream summary;
 std::ofstream captions;
+std::ofstream narration;
 
 // Accumulated per-segment info written to the summary file at the end.
 std::string sequenceInfo;
@@ -1587,9 +1590,10 @@ void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
 int main(int argc, char* argv[]) {
 
     // ── Hardcoded options ─────────────────────────────────────────────────────
-    const std::string TRACE_FILE   = "output_trace_animate.txt";
-    const std::string SUMMARY_FILE = "output_summary_animate.txt";
+    const std::string TRACE_FILE    = "output_trace_animate.txt";
+    const std::string SUMMARY_FILE  = "output_summary_animate.txt";
     const std::string CAPTIONS_FILE = "output_captions_and_timing.vtt";
+    const std::string NARRATION_FILE = "output_narration.txt";
 
     // ── Script-controlled options (set by directives before first animate) ────
     int         frames_per_step = 30;          // frames-per-step directive
@@ -1639,6 +1643,20 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     captions << "WEBVTT\n\n";
+
+    narration.open(NARRATION_FILE);
+    if (!narration) {
+        std::cerr << "Error: cannot open narration file: " << NARRATION_FILE << "\n";
+        return 1;
+    }
+    {
+        // Write title from title-begin block, or a blank line if not set.
+        auto it = scriptText.find("title");
+        if (it != scriptText.end() && !it->second.empty())
+            narration << it->second << "\n\n";
+        else
+            narration << "\n";
+    }
 
     // ── Settings header — stdout and summary ─────────────────────────────────
     std::cout << "Script: " << scriptPath << "  ("
@@ -2412,11 +2430,12 @@ int main(int argc, char* argv[]) {
         summary    << capMsg << "\n";
     }
 
-   // ── Write captions to VTT file ─────────────────────────────────
+   // ── Write captions to VTT and narration files ──────────────────
      for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
+        narration << captionSingleEntry.text << "\n\n";
     }
 
     // ── Print settings now that directives are all processed ─────────
@@ -2424,6 +2443,7 @@ int main(int argc, char* argv[]) {
     summary << "Output dir     : " << output_dir << "/\n"
             << "Trace file     : " << TRACE_FILE << "\n\n";
     summary << "Captions file  : " << CAPTIONS_FILE << "\n";
+    summary << "Narration file : " << NARRATION_FILE << "\n";
 
     // ── Final ────────────────────────────────────────────────────────────────
     std::string doneMsg = "Done!  " + std::to_string(globalFrame)
