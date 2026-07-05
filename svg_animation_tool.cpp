@@ -1377,7 +1377,7 @@ std::string generateFrame(const SvgFile& svgA,
                 continue;
             }
 
-            // No usable motion found for this id — warn once.
+            // No usable motion found for this id — warn once in trace only.
             if (!hasMatrixEncoding && !hasXY) {
                 static std::set<std::string> arcNoMotionWarned;
                 if (arcNoMotionWarned.insert(id).second) {
@@ -1386,7 +1386,8 @@ std::string generateFrame(const SvgFile& svgA,
                           " in this segment — arc not applied.";
                     std::cout << msg << "\n";
                     trace     << msg << "\n";
-                    summary   << msg << "\n";
+                    // Not written to summary — too noisy for intentionally
+                    // stationary objects across many segments.
                 }
                 continue;
             }
@@ -1879,28 +1880,41 @@ int main(int argc, char* argv[]) {
                     if (posMap.count(id)) activeIds.push_back(id);
 
                 if (activeIds.empty()) {
-                    std::string msg = "WARNING: spread-out: none of the "
-                                    + std::to_string(se.ids.size())
-                                    + " object-id(s) have detected motion in this segment"
-                                      " — spread-out skipped. Ids:";
-                    for (const auto& id : se.ids) msg += " " + id;
-                    std::cout << msg << "\n";
-                    trace     << msg << "\n";
-                    summary   << msg << "\n";
+                    // Build a key from the sorted id list for once-per-run gating
+                    static std::set<std::string> spreadNoneWarned;
+                    std::string key;
+                    for (const auto& id : se.ids) key += id + "|";
+                    if (spreadNoneWarned.insert(key).second) {
+                        std::string msg = "WARNING: spread-out: none of the "
+                                        + std::to_string(se.ids.size())
+                                        + " object-id(s) have detected motion in this"
+                                          " segment — spread-out skipped. Ids:";
+                        for (const auto& id : se.ids) msg += " " + id;
+                        std::cout << msg << "\n";
+                        trace     << msg << "\n";
+                        // Not written to summary — too noisy for intentionally
+                        // stationary objects across many segments.
+                    }
                     continue;
                 }
 
                 // Also warn about any ids in the spread entry that do have
                 // motion but were filtered out (partial skip — some moved, some didn't)
                 if (activeIds.size() < se.ids.size()) {
-                    std::string msg = "WARNING: spread-out: some object-id(s) have no"
-                                      " detected motion in this segment and will not be"
-                                      " staggered. Skipped ids:";
+                    static std::set<std::string> spreadSomeWarned;
+                    std::string key;
                     for (const auto& id : se.ids)
-                        if (!posMap.count(id)) msg += " " + id;
-                    std::cout << msg << "\n";
-                    trace     << msg << "\n";
-                    summary   << msg << "\n";
+                        if (!posMap.count(id)) key += id + "|";
+                    if (spreadSomeWarned.insert(key).second) {
+                        std::string msg = "WARNING: spread-out: some object-id(s) have no"
+                                          " detected motion in this segment and will not be"
+                                          " staggered. Skipped ids:";
+                        for (const auto& id : se.ids)
+                            if (!posMap.count(id)) msg += " " + id;
+                        std::cout << msg << "\n";
+                        trace     << msg << "\n";
+                        // Not written to summary for same reason.
+                    }
                 }
 
                 int n     = (int)activeIds.size();
