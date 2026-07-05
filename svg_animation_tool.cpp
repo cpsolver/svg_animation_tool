@@ -441,7 +441,6 @@ std::vector<std::string> loadScript(const std::string& path) {
     };
 
     while (pos < len) {
-        size_t tokStart = pos;
         std::string tok = readTok();
         if (tok.empty()) break;
 
@@ -533,7 +532,6 @@ std::map<std::string, Element> parseElements(
 {
     std::map<std::string, Element> elements;
 
-    int tagOpenLine = -1;
     bool inTag = false;
     std::string pendingId;
     int pendingIdLine = -1;
@@ -1376,6 +1374,20 @@ std::string generateFrame(const SvgFile& svgA,
                 continue;
             }
 
+            // No usable motion found for this id — warn once.
+            if (!hasMatrixEncoding && !hasXY) {
+                static std::set<std::string> arcNoMotionWarned;
+                if (arcNoMotionWarned.insert(id).second) {
+                    std::string msg = "WARNING: arc-height: id=\"" + id
+                        + "\" has no detected x/y or transform/matrix motion"
+                          " in this segment — arc not applied.";
+                    std::cout << msg << "\n";
+                    trace     << msg << "\n";
+                    summary   << msg << "\n";
+                }
+                continue;
+            }
+
             if (yLineNum < 0 || hSpan < 1e-9) continue;
 
             double offset = computeArcOffset(tArc, arc.trimDegrees,
@@ -1843,8 +1855,28 @@ int main(int argc, char* argv[]) {
                     if (posMap.count(id)) activeIds.push_back(id);
 
                 if (activeIds.empty()) {
-                    trace << "  spread-out: no moving ids in this segment, skipping\n";
+                    std::string msg = "WARNING: spread-out: none of the "
+                                    + std::to_string(se.ids.size())
+                                    + " object-id(s) have detected motion in this segment"
+                                      " — spread-out skipped. Ids:";
+                    for (const auto& id : se.ids) msg += " " + id;
+                    std::cout << msg << "\n";
+                    trace     << msg << "\n";
+                    summary   << msg << "\n";
                     continue;
+                }
+
+                // Also warn about any ids in the spread entry that do have
+                // motion but were filtered out (partial skip — some moved, some didn't)
+                if (activeIds.size() < se.ids.size()) {
+                    std::string msg = "WARNING: spread-out: some object-id(s) have no"
+                                      " detected motion in this segment and will not be"
+                                      " staggered. Skipped ids:";
+                    for (const auto& id : se.ids)
+                        if (!posMap.count(id)) msg += " " + id;
+                    std::cout << msg << "\n";
+                    trace     << msg << "\n";
+                    summary   << msg << "\n";
                 }
 
                 int n     = (int)activeIds.size();
@@ -2069,7 +2101,6 @@ int main(int argc, char* argv[]) {
                 i += 2; continue;
             }
             const SvgFile& current = window.back();
-            int firstFrameNum = globalFrame;
             std::string frozenSvg;
             for (const auto& ln : current.lines) frozenSvg += ln + '\n';
             for (int f = 0; f < freezeN; ++f) {
