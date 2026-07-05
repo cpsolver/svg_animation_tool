@@ -266,6 +266,11 @@ double desiredTimestampLastDesired = 0.0;
 
 // Global variables
 int captions_frames_per_second = 30;
+int captionWordsPerMinute = 130;  // set by caption-words-per-minute directive
+// Per-caption word counts, parallel to captionQueue. Summed up to
+// captionQueueIndex at each segment to get the cumulative reading time
+// for captions consumed so far (not all captions in the script).
+std::vector<int> captionWordCounts;
 
 std::vector<std::string> captionQueue;
 // Parallel to captionQueue: for each queued caption, the index (into the
@@ -373,6 +378,34 @@ std::string normalizeBlockText(const std::string& raw) {
     return result;
 }
 
+/// Count words in a caption string, ignoring text inside [...] brackets.
+/// Bracket spans are replaced with a space before tokenizing, so
+/// "something[bracketed text]something" counts as 2 words.
+int countWords(const std::string& text) {
+    // Strip [...] spans by replacing each with a space
+    std::string stripped;
+    stripped.reserve(text.size());
+    int depth = 0;
+    for (char c : text) {
+        if (c == '[') { ++depth; stripped += ' '; }
+        else if (c == ']') { if (depth > 0) --depth; stripped += ' '; }
+        else if (depth > 0) stripped += ' ';  // inside brackets -> whitespace
+        else stripped += c;
+    }
+    // Count whitespace-delimited tokens
+    int count = 0;
+    bool inWord = false;
+    for (char c : stripped) {
+        if (std::isspace((unsigned char)c)) {
+            inWord = false;
+        } else if (!inWord) {
+            ++count;
+            inWord = true;
+        }
+    }
+    return count;
+}
+
 /// Load and tokenize a script file.
 /// - No comment syntax: all characters are significant.
 /// - Tokens matching [a-zA-Z0-9-]+-begin open a text-collection block.
@@ -438,6 +471,7 @@ std::vector<std::string> loadScript(const std::string& path) {
                 if (prefix == "caption") {
                     captionQueue.push_back(normalized);
                     captionTokenMarker.push_back((int)tokens.size());
+                    captionWordCounts.push_back(countWords(normalized));
                 }
             }
 
@@ -1466,11 +1500,37 @@ std::string frameToVtt(int frame) {
 }
 
 /// Format a frame count as compact seconds with one decimal place,
-/// no leading zeros (e.g. 612 frames at 30fps -> "20.4").
+/// no leading zeros. Uses MM:SS.s format when >= 60 seconds
+/// (e.g. 1830 frames at 30fps -> "1:01.0"), plain seconds otherwise
+/// (e.g. 612 frames at 30fps -> "20.4").
 std::string frameToSeconds(int frame) {
-    double secs = (double)frame / (double)captions_frames_per_second;
+    double totalSecs = (double)frame / (double)captions_frames_per_second;
+    if (totalSecs >= 60.0) {
+        int mins = (int)totalSecs / 60;
+        double secs = totalSecs - mins * 60.0;
+        std::ostringstream oss;
+        oss << mins << ":" << std::fixed << std::setprecision(1)
+            << std::setw(4) << std::setfill('0') << secs;
+        return oss.str();
+    }
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << secs;
+    oss << std::fixed << std::setprecision(1) << totalSecs;
+    return oss.str();
+}
+
+/// Format the estimated caption reading time (based on captions consumed
+/// so far — up to captionQueueIndex — and captionWordsPerMinute) as MM:SS
+/// rounded to the nearest second. Returns e.g. "0:42" or "1:05".
+std::string captionReadingTime() {
+    int wordsConsumed = 0;
+    for (int k = 0; k < captionQueueIndex && k < (int)captionWordCounts.size(); ++k)
+        wordsConsumed += captionWordCounts[k];
+    double totalSecs = (wordsConsumed * 60.0) / captionWordsPerMinute;
+    int rounded = (int)std::round(totalSecs);
+    int mins = rounded / 60;
+    int secs = rounded % 60;
+    std::ostringstream oss;
+    oss << mins << ":" << std::setw(2) << std::setfill('0') << secs;
     return oss.str();
 }
 
@@ -1961,7 +2021,8 @@ int main(int argc, char* argv[]) {
             sequenceInfo += svgA.filename + "\n\n";
             for (const auto& id : changedIds)
                 sequenceInfo += "  " + id + "\n";
-            sequenceInfo += "\n  time " + frameToSeconds(globalFrame) + "\n\n";
+            sequenceInfo += "\n  time " + frameToSeconds(globalFrame) + "\n"
+                         + "  read " + captionReadingTime() + "\n\n";
             lastSvgBFilename = svgB.filename;
 
             // Write animation diagnostics — actual observed values at boundaries
@@ -2026,7 +2087,8 @@ int main(int argc, char* argv[]) {
 
             sequenceInfo += current.filename + "\n\n"
                          + "  freeze\n"
-                         + "\n  time " + frameToSeconds(globalFrame) + "\n\n";
+                         + "\n  time " + frameToSeconds(globalFrame) + "\n"
+                         + "  read " + captionReadingTime() + "\n\n";
             lastSvgBFilename = "";  // freeze has no B keyframe
 
             prevWasAnimate = false;
@@ -2194,6 +2256,21 @@ int main(int argc, char* argv[]) {
             ++i; continue;
         }
 
+        // ── caption-words-per-minute ──────────────────────────────────────────
+        if (tok == "caption-words-per-minute") {
+            flushObjectIds();
+            collectingMode = "";
+            int val = consumeOptionalInt(i);
+            if (val > 0) {
+                captionWordsPerMinute = val;
+                trace   << "caption-words-per-minute: " << captionWordsPerMinute << "\n";
+                summary << "caption-words-per-minute: " << captionWordsPerMinute << "\n";
+            } else {
+                std::cout << "WARNING: caption-words-per-minute requires a positive integer — ignored.\n";
+            }
+            ++i; continue;
+        }
+
         // ── desired-timestamp ─────────────────────────────────────────────────
         // Accepts a time as decimal seconds (e.g. "3.5") or MM:SS (e.g. "1:30").
         // Reports how many frames over or under the actual frame count is
@@ -2322,14 +2399,8 @@ int main(int argc, char* argv[]) {
                         + " frame(s) written to '" + output_dir + "/'.";
     std::cout  << "\n══════════════════════════════════════════════════\n"
                << doneMsg << "\n\n"
-               << "Convert SVG frames to PNG using Inkscape CLI:\n\n"
-               << "  mkdir -p frames_png\n"
-               << "  for f in " << output_dir << "/frame_*.svg; do\n"
-               << "    inkscape \"$f\" --export-type=png \\\n"
-               << "      --export-filename=\"frames_png/$(basename \"${f%.svg}\").png\"\n"
-               << "  done\n\n"
-               << "Convert PNG image sequence into video using ffmpeg CLI:\n\n"
-               << "ffmpeg -framerate 30 -i frames_png/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_demo.mp4\n\n"
+               << "Convert SVG frames to PNG using program:\n\n"
+               << "  render_png_files_using_inkscape.cpp\n\n"
                << "Source code and documentation at:\n"
                << "https://github.com/cpsolver/svg_animation_tool\n"
                << "══════════════════════════════════════════════════\n";
@@ -2339,7 +2410,8 @@ int main(int argc, char* argv[]) {
     if (!sequenceInfo.empty()) {
         if (!lastSvgBFilename.empty())
             sequenceInfo += lastSvgBFilename + "\n";
-        summary << "\nSequence:\n" << sequenceInfo;
+        summary << "\n══════════════════════════════════════════════════\n\n" <<
+                "Sequence:\n\n" << sequenceInfo;
     }
     trace      << "\n" << doneMsg << "\n";
 
