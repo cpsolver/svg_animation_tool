@@ -1787,6 +1787,10 @@ int main(int argc, char* argv[]) {
         // ── animate ──────────────────────────────────────────────────────────
         if (tok == "animate") {
             flushObjectIds();
+            // Optional integer after 'animate' overrides frames_per_step
+            // for this segment only.
+            int val = consumeOptionalInt(i);
+            int segFrames = (val > 0) ? val : frames_per_step;
             int captionStart = globalFrame;
             collectingMode = "";
             if (window.size() < 2) {
@@ -1804,6 +1808,8 @@ int main(int argc, char* argv[]) {
             ++animateCount;
             std::string animHeader = "From: " + svgA.filename + "\n"
                                    + "To:   " + svgB.filename;
+            if (val > 0)
+                animHeader += "\n  (frames: " + std::to_string(segFrames) + ")";
             std::cout  << animHeader << "\n";
             summary    << animHeader << "\n";
             trace      << animHeader << "\n";
@@ -1862,7 +1868,7 @@ int main(int argc, char* argv[]) {
 
             // Per-object timing for this segment (global timingMap)
             timingMap.clear();
-            int expandedFrames = frames_per_step;
+            int expandedFrames = segFrames;
 
             for (const auto& se : spreadEntries) {
                 if (se.ids.empty()) continue;
@@ -1955,8 +1961,8 @@ int main(int argc, char* argv[]) {
                     maxCombined = std::max(maxCombined,
                                            startRank[id] + endRank[id]);
 
-                int expandedSimple  = frames_per_step + delay * (n - 1);
-                int expandedSafe    = frames_per_step + maxCombined * delay + 1;
+                int expandedSimple  = segFrames + delay * (n - 1);
+                int expandedSafe    = segFrames + maxCombined * delay + 1;
                 int expanded        = std::max(expandedSimple, expandedSafe);
                 if (expanded > expandedFrames) expandedFrames = expanded;
 
@@ -1964,7 +1970,7 @@ int main(int argc, char* argv[]) {
                 if (expandedSafe > expandedSimple)
                     trace << "  spread-out: expanded adjusted from "
                           << expandedSimple << " to " << expanded
-                          << " to guarantee " << frames_per_step
+                          << " to guarantee " << segFrames
                           << " frames per object (max combined rank="
                           << maxCombined << ")\n";
 
