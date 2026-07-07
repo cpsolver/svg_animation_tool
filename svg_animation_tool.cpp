@@ -1515,39 +1515,38 @@ std::string frameToVtt(int frame) {
     return oss.str();
 }
 
-/// Format a frame count as compact seconds with one decimal place,
-/// no leading zeros. Uses MM:SS.s format when >= 60 seconds
-/// (e.g. 1830 frames at 30fps -> "1:01.0"), plain seconds otherwise
-/// (e.g. 612 frames at 30fps -> "20.4").
-std::string frameToSeconds(int frame) {
-    double totalSecs = (double)frame / (double)captions_frames_per_second;
-    if (totalSecs >= 60.0) {
-        int mins = (int)totalSecs / 60;
-        double secs = totalSecs - mins * 60.0;
+/// Format a frame count as a whole-second time string with no decimal,
+/// using MM:SS when >= 60 seconds, plain seconds otherwise.
+/// Truncates (does not round). E.g. 1831 frames at 30fps -> "1:01",
+/// 612 frames at 30fps -> "20".
+std::string framesToTime(int frame) {
+    int totalSecs = (int)((double)frame / (double)captions_frames_per_second);
+    if (totalSecs >= 60) {
+        int mins = totalSecs / 60;
+        int secs = totalSecs % 60;
         std::ostringstream oss;
-        oss << mins << ":" << std::fixed << std::setprecision(1)
-            << std::setw(4) << std::setfill('0') << secs;
+        oss << mins << ":" << std::setw(2) << std::setfill('0') << secs;
         return oss.str();
     }
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(1) << totalSecs;
-    return oss.str();
+    return std::to_string(totalSecs);
 }
 
 /// Format the estimated caption reading time (based on captions consumed
-/// so far — up to captionQueueIndex — and captionWordsPerMinute) as MM:SS
-/// rounded to the nearest second. Returns e.g. "0:42" or "1:05".
+/// so far — up to captionQueueIndex — and captionWordsPerMinute) as a
+/// whole-second time string (truncated, no decimal), MM:SS when >= 60s.
 std::string captionReadingTime() {
     int wordsConsumed = 0;
     for (int k = 0; k < captionQueueIndex && k < (int)captionWordCounts.size(); ++k)
         wordsConsumed += captionWordCounts[k];
-    double totalSecs = (wordsConsumed * 60.0) / captionWordsPerMinute;
-    int rounded = (int)std::round(totalSecs);
-    int mins = rounded / 60;
-    int secs = rounded % 60;
-    std::ostringstream oss;
-    oss << mins << ":" << std::setw(2) << std::setfill('0') << secs;
-    return oss.str();
+    int totalSecs = (int)((wordsConsumed * 60.0) / captionWordsPerMinute);
+    if (totalSecs >= 60) {
+        int mins = totalSecs / 60;
+        int secs = totalSecs % 60;
+        std::ostringstream oss;
+        oss << mins << ":" << std::setw(2) << std::setfill('0') << secs;
+        return oss.str();
+    }
+    return std::to_string(totalSecs);
 }
 
 /// Consume all captions accumulated since the last segment AND positioned
@@ -1594,7 +1593,8 @@ int main(int argc, char* argv[]) {
     const std::string TRACE_FILE    = "output_trace_animate.txt";
     const std::string SUMMARY_FILE  = "output_summary_animate.txt";
     const std::string CAPTIONS_FILE = "output_captions_and_timing.vtt";
-    const std::string NARRATION_FILE = "output_narration.txt";
+    const std::string NARRATION_FILE   = "output_narration.txt";
+    const std::string AUDIO_LIST_FILE  = "output_audio_narration_file_list.txt";
 
     // ── Script-controlled options (set by directives before first animate) ────
     int         frames_per_step = 30;          // frames-per-step directive
@@ -2091,8 +2091,8 @@ int main(int argc, char* argv[]) {
             sequenceInfo += svgA.filename + "\n\n";
             for (const auto& id : changedIds)
                 sequenceInfo += "  " + id + "\n";
-            sequenceInfo += "\n  time " + frameToSeconds(globalFrame) + "\n"
-                         + "  read " + captionReadingTime() + "\n\n";
+            sequenceInfo += "\n  frames " + framesToTime(globalFrame) + "\n"
+                         + "  captions " + captionReadingTime() + "\n\n";
             lastSvgBFilename = svgB.filename;
 
             // Write animation diagnostics — actual observed values at boundaries
@@ -2156,8 +2156,8 @@ int main(int argc, char* argv[]) {
 
             sequenceInfo += current.filename + "\n\n"
                          + "  freeze\n"
-                         + "\n  time " + frameToSeconds(globalFrame) + "\n"
-                         + "  read " + captionReadingTime() + "\n\n";
+                         + "\n  frames " + framesToTime(globalFrame) + "\n"
+                         + "  captions " + captionReadingTime() + "\n\n";
             lastSvgBFilename = "";  // freeze has no B keyframe
 
             prevWasAnimate = false;
@@ -2379,10 +2379,24 @@ int main(int argc, char* argv[]) {
                     else
                         diffMsg = "exact";
 
+                    // Format cumulative desired time as truncated MM:SS or seconds
+                    int dTotalSecs = (int)desiredSecs;
+                    std::string audioStr;
+                    if (dTotalSecs >= 60) {
+                        int dMins = dTotalSecs / 60;
+                        int dSecs = dTotalSecs % 60;
+                        std::ostringstream oss;
+                        oss << dMins << ":" << std::setw(2) << std::setfill('0') << dSecs;
+                        audioStr = oss.str();
+                    } else {
+                        audioStr = std::to_string(dTotalSecs);
+                    }
+
+                    // Diff goes to stdout and trace; audio line goes to sequenceInfo
                     std::string dtMsg = "  " + diffMsg;
                     std::cout  << dtMsg << "\n";
                     trace      << dtMsg << "\n";
-                    sequenceInfo += dtMsg + "\n\n";
+                    sequenceInfo += "  audio " + audioStr + "\n\n";
 
                     desiredTimestampLastFrame   = globalFrame;
                     desiredTimestampLastDesired = desiredSecs;
@@ -2484,6 +2498,38 @@ int main(int argc, char* argv[]) {
         summary << "\n══════════════════════════════════════════════════\n\n" <<
                 "Sequence:\n\n" << sequenceInfo;
     }
+
+    // Write audio file list and ffmpeg concat command if audio-files were specified
+    {
+        auto it = scriptText.find("audio-files");
+        if (it != scriptText.end() && !it->second.empty()) {
+            // Split the normalized audio-files text on whitespace into filenames
+            std::vector<std::string> audioFiles;
+            std::istringstream iss(it->second);
+            std::string fname;
+            while (iss >> fname)
+                audioFiles.push_back(fname);
+
+            if (!audioFiles.empty()) {
+                // Write the ffmpeg concat list file
+                std::ofstream audioList(AUDIO_LIST_FILE);
+                if (audioList) {
+                    for (const auto& f : audioFiles)
+                        audioList << "file '" << f << "'\n";
+                    summary << "\nAudio list file: " << AUDIO_LIST_FILE << "\n";
+                } else {
+                    std::cerr << "Error: cannot open audio list file: "
+                              << AUDIO_LIST_FILE << "\n";
+                }
+
+                // Append ffmpeg concat command to summary
+                summary << "\nffmpeg -f concat -safe 0"
+                        << " -i " << AUDIO_LIST_FILE
+                        << " -c copy output_narration_audio.mp3\n";
+            }
+        }
+    }
+
     trace      << "\n" << doneMsg << "\n";
 
     return 0;
