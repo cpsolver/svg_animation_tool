@@ -7,7 +7,7 @@
  * summary showing each file's individual duration and cumulative end time,
  * both rounded to the nearest whole second.
  *
- * Output goes to get_audio_timing.txt.
+ * Output goes to output_audio_timing.txt.
  *
  * Build:
  *   g++ -std=c++17 -O2 -o get_audio_timing get_audio_timing.cpp
@@ -27,7 +27,7 @@
 #include <iomanip>
 #include <cstdio>
 
-//  Globals
+//  Globals (names begin with "g_")
 
 std::string g_inputFile  = "output_audio_narration_file_list.txt";
 std::string g_outputFile = "output_audio_timing.txt";
@@ -122,7 +122,7 @@ int main() {
     std::string heading = std::string("File")
                         + std::string(nameWidth - 4, ' ')
                         + "Duration    Cumulative end time";
-    outFile    << heading << "\n";
+    outFile  << heading << "\n";
 
     // One line per file
     for (size_t k = 0; k < g_audioFiles.size(); ++k) {
@@ -154,8 +154,7 @@ int main() {
             << std::right << std::setw(8) << fmtSecs(durRounded)
             << "    "
             << std::setw(8) << fmtSecs(cumRounded);
-
-        outFile    << row.str() << "\n";
+        outFile  << row.str() << "\n";
     }
 
     std::cout  << "Audio timing written to: " << g_outputFile << "\n";
