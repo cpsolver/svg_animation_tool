@@ -293,6 +293,9 @@ int captionQueueIndex = 0;
 // Global: parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
 
+// Toggled by full-skip-mode-on / full-skip-mode-off
+bool fullSkipMode = false;
+
 
 // ------------------------------------------------
 // Easing functions
@@ -1491,7 +1494,9 @@ void writeFrame(const std::string& outDir,
     fname << outDir << "/frame_"
           << std::setw(digits) << std::setfill('0') << frameNum
           << ".svg";
-    writeFile(fname.str(), svgContent);
+    if (!fullSkipMode) {
+        writeFile(fname.str(), svgContent);
+    }
 }
 
 
@@ -2294,6 +2299,29 @@ int main(int argc, char* argv[]) {
             skipMode = false;
             trace   << "skip-mode-off\n";
             summary << "skip-mode-off\n";
+            ++i; continue;
+        }
+
+        // ── full-skip-mode-on / full-skip-mode-off ─────────────────────────────────────
+        // When full skip mode is on, animate segments still run all calculations
+        // (detectChanges, spread-out, arc, generateFrame for every frame) so
+        // the trace file shows complete information, but SVG files are not written.
+        // globalFrame still counts all frames, so output frame numbers have gaps.
+        if (tok == "full-skip-mode-on") {
+            flushObjectIds();
+            collectingMode = "";
+            fullSkipMode = true;
+            trace   << "full-skip-mode-on\n";
+            summary << "full-skip-mode-on\n";
+            ++i; continue;
+        }
+
+        if (tok == "full-skip-mode-off") {
+            flushObjectIds();
+            collectingMode = "";
+            fullSkipMode = false;
+            trace   << "full-skip-mode-off\n";
+            summary << "full-skip-mode-off\n";
             ++i; continue;
         }
 
