@@ -601,10 +601,10 @@ std::map<std::string, Element> parseElements(
                  + " close=" + std::to_string(e.tagCloseLine) + "\n";
         ++shownCount;
     }
-    trace << "Uniquely named elements found in " << filename << ":\n"
-          << listing
-          << "  Shown: " << shownCount
-          << "  Total registered: " << elements.size() << "\n";
+    // trace << "Uniquely named elements found in " << filename << ":\n"
+    //       << listing
+    //       << "  Shown: " << shownCount
+    //       << "  Total registered: " << elements.size() << "\n";
 
     return elements;
 }
@@ -975,22 +975,22 @@ void detectChanges(
                     double dSx    = mc.decompB.sx    - mc.decompA.sx;
                     double dSy    = mc.decompB.sy    - mc.decompA.sy;
                     double dShear = mc.decompB.shear - mc.decompA.shear;
-                    if (std::fabs(dAngleDeg) > 1e-6) trace << "    rotation: A=" << mc.decompA.angle * 180.0 / PI << " deg  B=" << mc.decompB.angle * 180.0 / PI << " deg  delta=" << dAngleDeg << " deg\n";
-                    if (std::fabs(dSx)       > 1e-6) trace << "    sx:       A=" << mc.decompA.sx    << "  B=" << mc.decompB.sx    << "  delta=" << dSx    << "\n";
-                    if (std::fabs(dSy)       > 1e-6) trace << "    sy:       A=" << mc.decompA.sy    << "  B=" << mc.decompB.sy    << "  delta=" << dSy    << "\n";
-                    if (std::fabs(dShear)    > 1e-6) trace << "    shear:    A=" << mc.decompA.shear << "  B=" << mc.decompB.shear << "  delta=" << dShear << "\n";
+                    // if (std::fabs(dAngleDeg) > 1e-6) trace << "    rotation: A=" << mc.decompA.angle * 180.0 / PI << " deg  B=" << mc.decompB.angle * 180.0 / PI << " deg  delta=" << dAngleDeg << " deg\n";
+                    // if (std::fabs(dSx)       > 1e-6) trace << "    sx:       A=" << mc.decompA.sx    << "  B=" << mc.decompB.sx    << "  delta=" << dSx    << "\n";
+                    // if (std::fabs(dSy)       > 1e-6) trace << "    sy:       A=" << mc.decompA.sy    << "  B=" << mc.decompB.sy    << "  delta=" << dSy    << "\n";
+                    // if (std::fabs(dShear)    > 1e-6) trace << "    shear:    A=" << mc.decompA.shear << "  B=" << mc.decompB.shear << "  delta=" << dShear << "\n";
 
-                    trace << "  id=\"" << id << "\" (matrix affine)\n"
-                          << "    lineA=" << transformLineA
-                          << " lineB=" << transformLineB << "\n"
-                          << "    A: matrix("
-                          << valsA[0] << "," << valsA[1] << ","
-                          << valsA[2] << "," << valsA[3] << ","
-                          << valsA[4] << "," << valsA[5] << ")\n"
-                          << "    B: matrix("
-                          << valsB[0] << "," << valsB[1] << ","
-                          << valsB[2] << "," << valsB[3] << ","
-                          << valsB[4] << "," << valsB[5] << ")\n";
+                    // trace << "  id=\"" << id << "\" (matrix affine)\n"
+                    //       << "    lineA=" << transformLineA
+                    //       << " lineB=" << transformLineB << "\n"
+                    //       << "    A: matrix("
+                    //       << valsA[0] << "," << valsA[1] << ","
+                    //       << valsA[2] << "," << valsA[3] << ","
+                    //       << valsA[4] << "," << valsA[5] << ")\n"
+                    //       << "    B: matrix("
+                    //       << valsB[0] << "," << valsB[1] << ","
+                    //       << valsB[2] << "," << valsB[3] << ","
+                    //       << valsB[4] << "," << valsB[5] << ")\n";
                 }
                 handledAsMatrix = true;
             }
@@ -1033,15 +1033,15 @@ void detectChanges(
             changedIds.insert(id);
 
             if (firstForId) {
-                trace << "  id=\"" << id << "\"\n";
+                // trace << "  id=\"" << id << "\"\n";
                 firstForId = false;
             }
-            trace << "    attr=" << nvA.attrName
-                  << "  [" << nvA.valueIndex << "]"
-                  << "  lineA=" << nvA.lineNum
-                  << "  lineB=" << nvB.lineNum
-                  << "  A=" << nvA.value
-                  << "  B=" << nvB.value << "\n";
+            // trace << "    attr=" << nvA.attrName
+            //       << "  [" << nvA.valueIndex << "]"
+            //       << "  lineA=" << nvA.lineNum
+            //       << "  lineB=" << nvB.lineNum
+            //       << "  A=" << nvA.value
+            //       << "  B=" << nvB.value << "\n";
         }
     }
 
@@ -1465,15 +1465,15 @@ void reportLabelMismatches(const SvgFile& svg) {
                      e.id.find('_') != std::string::npos)) {
                     if (!headerWritten) {
                         std::cout << "  Label/id mismatches in " << svg.filename << ":\n";
-                        trace     << "Label/id mismatches in " << svg.filename << ":\n";
+                        // trace     << "Label/id mismatches in " << svg.filename << ":\n";
                         headerWritten = true;
                     }
                     std::cout << "    line " << (li + 1)
                               << ": id=\"" << e.id
                               << "\"  label=\"" << label << "\"\n";
-                    trace     << "  line " << (li + 1)
-                              << ": id=\"" << e.id
-                              << "\"  label=\"" << label << "\"\n";
+                    // trace     << "  line " << (li + 1)
+                    //           << ": id=\"" << e.id
+                    //           << "\"  label=\"" << label << "\"\n";
                 }
                 break;
             }
@@ -1986,24 +1986,24 @@ int main(int argc, char* argv[]) {
                 if (expanded > expandedFrames) expandedFrames = expanded;
 
                 // Log if adjustment was needed
-                if (expandedSafe > expandedSimple)
-                    trace << "  spread-out: expanded adjusted from "
-                          << expandedSimple << " to " << expanded
-                          << " to guarantee " << segFrames
-                          << " frames per object (max combined rank="
-                          << maxCombined << ")\n";
+                // if (expandedSafe > expandedSimple)
+                //     trace << "  spread-out: expanded adjusted from "
+                //           << expandedSimple << " to " << expanded
+                //           << " to guarantee " << segFrames
+                //           << " frames per object (max combined rank="
+                //           << maxCombined << ")\n";
 
                 // Assign and log
-                trace << "  spread-out timing (delay=" << delay
-                      << "  n=" << n
-                      << "  expanded=" << expanded
-                      << "  start=" << se.startDir
-                      << "  end=" << se.endDir << "):\n";
-                trace << "    " << std::left << std::setw(18) << "id"
-                      << std::setw(12) << "startFrame"
-                      << std::setw(10) << "endFrame"
-                      << std::setw(10) << "yA"
-                      << "yB\n";
+                // trace << "  spread-out timing (delay=" << delay
+                //       << "  n=" << n
+                //       << "  expanded=" << expanded
+                //       << "  start=" << se.startDir
+                //       << "  end=" << se.endDir << "):\n";
+                // trace << "    " << std::left << std::setw(18) << "id"
+                //       << std::setw(12) << "startFrame"
+                //       << std::setw(10) << "endFrame"
+                //       << std::setw(10) << "yA"
+                //       << "yB\n";
 
                 for (const auto& id : activeIds) {
                     ObjectTiming ot;
@@ -2028,15 +2028,15 @@ int main(int argc, char* argv[]) {
                 for (int s = 0; s < nSamples; ++s)
                     sampleFrames.push_back(s * (expandedFrames - 1) / (nSamples - 1));
 
-                trace << "  per-object t at sample frames:\n";
-                trace << "    " << std::left << std::setw(18) << "id";
-                for (int sf : sampleFrames)
-                    trace << std::setw(8) << ("f=" + std::to_string(sf));
-                trace << "\n";
+                // trace << "  per-object t at sample frames:\n";
+                // trace << "    " << std::left << std::setw(18) << "id";
+                // for (int sf : sampleFrames)
+                //     trace << std::setw(8) << ("f=" + std::to_string(sf));
+                // trace << "\n";
 
                 for (const auto& kv : timingMap) {
                     const ObjectTiming& ot = kv.second;
-                    trace << "    " << std::left << std::setw(18) << ot.id;
+                    // trace << "    " << std::left << std::setw(18) << ot.id;
                     for (int sf : sampleFrames) {
                         int span = ot.endFrame - ot.startFrame;
                         double local = (span <= 0) ? 1.0
@@ -2044,17 +2044,17 @@ int main(int argc, char* argv[]) {
                         double tval = smootherstep(local);
                         std::ostringstream os;
                         os << std::fixed << std::setprecision(3) << tval;
-                        trace << std::setw(8) << os.str();
+                        // trace << std::setw(8) << os.str();
                     }
-                    trace << "\n";
+                    // trace << "\n";
                 }
 
-                trace << "  final timingMap:\n";
-                for (const auto& kv : timingMap) {
-                    trace << "    id=" << std::left << std::setw(25) << kv.first
-                          << "  startFrame=" << kv.second.startFrame
-                          << "  endFrame="   << kv.second.endFrame << "\n";
-                }
+                // trace << "  final timingMap:\n";
+                // for (const auto& kv : timingMap) {
+                //     trace << "    id=" << std::left << std::setw(25) << kv.first
+                //           << "  startFrame=" << kv.second.startFrame
+                //           << "  endFrame="   << kv.second.endFrame << "\n";
+                // }
 
             }
 
@@ -2063,8 +2063,8 @@ int main(int argc, char* argv[]) {
             int firstFrameNum = globalFrame;
             int midFrame      = expandedFrames / 2;
 
-            trace << "  expandedFrames=" << expandedFrames
-                  << "  midFrame=" << midFrame << "\n";
+            // trace << "  expandedFrames=" << expandedFrames
+            //       << "  midFrame=" << midFrame << "\n";
 
             for (int f = fStart; f < expandedFrames; ++f) {
                 double tLinear = (expandedFrames == 1)
@@ -2177,7 +2177,7 @@ int main(int argc, char* argv[]) {
             flushObjectIds();
             objectIds.clear();
             collectingMode = "object-ids";
-            trace << "object-ids: collecting\n";
+            // trace << "object-ids: collecting\n";
             ++i; continue;
         }
 
@@ -2265,9 +2265,9 @@ int main(int argc, char* argv[]) {
             ae.trimDegrees = currentArcDeg;
             arcEntries.push_back(ae);
             // Log
-            trace << "arc-height: peak=" << peakPct
-                  << "%  trim=" << currentArcDeg << "deg"
-                  << "  ids=" << objectIds.size() << "\n";
+            // trace << "arc-height: peak=" << peakPct
+            //       << "%  trim=" << currentArcDeg << "deg"
+            //       << "  ids=" << objectIds.size() << "\n";
             summary << "arc-height    : peak=" << peakPct
                     << "%  trim=" << currentArcDeg << "deg"
                     << "  ids:";
