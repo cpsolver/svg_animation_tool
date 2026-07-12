@@ -692,17 +692,17 @@ void extractAllValues(
         e.values = extractValues(lines, e.tagOpenLine, e.tagCloseLine);
     }
 
-    trace << "Numeric values in " << filename << ":\n";
-    for (const auto& kv : elements) {
-        const Element& e = kv.second;
-        if (e.values.empty()) continue;
-        trace << "  id=\"" << e.id << "\"\n";
-        for (const auto& nv : e.values)
-            trace << "    line=" << nv.lineNum
-                  << "  attr=" << nv.attrName
-                  << "  [" << nv.valueIndex << "]"
-                  << "  value=" << nv.value << "\n";
-    }
+    // trace << "Numeric values in " << filename << ":\n";
+    // for (const auto& kv : elements) {
+    //     const Element& e = kv.second;
+    //     if (e.values.empty()) continue;
+    //     trace << "  id=\"" << e.id << "\"\n";
+    //     for (const auto& nv : e.values)
+    //         trace << "    line=" << nv.lineNum
+    //               << "  attr=" << nv.attrName
+    //               << "  [" << nv.valueIndex << "]"
+    //               << "  value=" << nv.value << "\n";
+    // }
 }
 
 // ------------------------------------------------
@@ -1830,11 +1830,11 @@ int main(int argc, char* argv[]) {
             struct Pos { double xA=0, yA=0, xB=0, yB=0; };
             std::map<std::string, Pos> posMap;
             for (const auto& vc : changes) {
-                trace << "    posMap loop: id=" << vc.id
-                      << "  attr=" << vc.attrName
-                      << "  idx=" << vc.valueIndex
-                      << "  A=" << vc.valueA
-                      << "  B=" << vc.valueB << "\n";
+                // trace << "    posMap loop: id=" << vc.id
+                //       << "  attr=" << vc.attrName
+                //       << "  idx=" << vc.valueIndex
+                //       << "  A=" << vc.valueA
+                //       << "  B=" << vc.valueB << "\n";
                 if (vc.attrName != "transform" && vc.attrName != "x" && vc.attrName != "y") continue;
                 auto& p = posMap[vc.id];
                 if (vc.attrName == "transform") {
@@ -1863,14 +1863,14 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            trace << "  posMap contents:\n";
-            for (const auto& kv : posMap) {
-                trace << "    id=" << kv.first
-                      << "  xA=" << kv.second.xA
-                      << "  yA=" << kv.second.yA
-                      << "  xB=" << kv.second.xB
-                      << "  yB=" << kv.second.yB << "\n";
-            }
+            // trace << "  posMap contents:\n";
+            // for (const auto& kv : posMap) {
+            //     trace << "    id=" << kv.first
+            //           << "  xA=" << kv.second.xA
+            //           << "  yA=" << kv.second.yA
+            //           << "  xB=" << kv.second.xB
+            //           << "  yB=" << kv.second.yB << "\n";
+            // }
 
             // Per-object timing for this segment (global timingMap)
             timingMap.clear();
@@ -1940,8 +1940,8 @@ int main(int argc, char* argv[]) {
                         } else if (dir == "bottom") {
                             va = useA ? pa.yA : pa.yB;
                             vb = useA ? pb.yA : pb.yB;
-                            trace << "    SORT bottom: " << ia << "=" << va
-                                  << " vs " << ib << "=" << vb << "\n";
+                            // trace << "    SORT bottom: " << ia << "=" << va
+                            //       << " vs " << ib << "=" << vb << "\n";
                             return va > vb;
                         } else if (dir == "left") {
                             va = useA ? pa.xA : pa.xB;
@@ -2012,11 +2012,11 @@ int main(int argc, char* argv[]) {
                     ot.endFrame   = (expanded - 1) - endRank[id] * delay;
                     timingMap[id] = ot;
 
-                    trace << "    " << std::left << std::setw(18) << id
-                          << std::setw(12) << ot.startFrame
-                          << std::setw(10) << ot.endFrame
-                          << std::setw(10) << posMap[id].yA
-                          << posMap[id].yB << "\n";
+                    // trace << "    " << std::left << std::setw(18) << id
+                    //       << std::setw(12) << ot.startFrame
+                    //       << std::setw(10) << ot.endFrame
+                    //       << std::setw(10) << posMap[id].yA
+                    //       << posMap[id].yB << "\n";
                 }
             }
 
@@ -2102,20 +2102,20 @@ int main(int argc, char* argv[]) {
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
-                trace << "  animation value diagnostics:\n";
-                for (const auto& kv : animDiag) {
-                    const AnimDiagEntry& de = kv.second;
-                    trace << "    id=\"" << de.id << "\""
-                          << "  attr=" << de.attrName
-                          << "  [" << de.valueIndex << "]"
-                          << "  first=" << de.firstValue
-                          << "  lastA=" << de.lastAValue;
-                    if (de.seenB)
-                        trace << "  firstB=" << de.firstBValue;
-                    else
-                        trace << "  firstB=(none)";
-                    trace << "  last=" << de.lastValue << "\n";
-                }
+                // trace << "  animation value diagnostics:\n";
+                // for (const auto& kv : animDiag) {
+                //     const AnimDiagEntry& de = kv.second;
+                //     trace << "    id=\"" << de.id << "\""
+                //           << "  attr=" << de.attrName
+                //           << "  [" << de.valueIndex << "]"
+                //           << "  first=" << de.firstValue
+                //           << "  lastA=" << de.lastAValue;
+                //     if (de.seenB)
+                //         trace << "  firstB=" << de.firstBValue;
+                //     else
+                //         trace << "  firstB=(none)";
+                //     trace << "  last=" << de.lastValue << "\n";
+                // }
             }
 
             windowUsed[0] = true;
