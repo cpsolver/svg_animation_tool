@@ -20,9 +20,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <iomanip>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <cstring>
 #include <sys/wait.h>
@@ -228,7 +230,9 @@ int main(int argc, char* argv[]) {
 
                 // Render the SVG to a temporary PNG once (only if not a duplicate).
                 // We render to the first output slot's filename, then copy for the rest.
-                fs::path firstOutput = OUTPUT_DIR / ("frame_" + std::to_string(outStart) + ".png");
+                std::ostringstream oss_filename;
+                oss_filename << "frame_" << std::setw(5) << std::setfill('0') << outStart << ".png";
+                fs::path firstOutput = OUTPUT_DIR / oss_filename.str();
 
                 if (isDuplicate) {
                     // Copy previous PNG to the first output slot without re-rendering.
@@ -268,7 +272,9 @@ int main(int argc, char* argv[]) {
                 // Copy the rendered PNG to all remaining output slots this input
                 // file owns (freeze fill: same image, multiple output frame numbers).
                 for (int outF = outStart + 1; outF < nextOutputFrameLimit; ++outF) {
-                    fs::path output = OUTPUT_DIR / ("frame_" + std::to_string(outF) + ".png");
+                    std::ostringstream oss_filename;
+                    oss_filename << "frame_" << std::setw(5) << std::setfill('0') << outStart << ".png";
+                    fs::path output = OUTPUT_DIR / oss_filename.str();
                     std::error_code ec;
                     fs::copy_file(firstOutput, output,
                                   fs::copy_options::overwrite_existing, ec);

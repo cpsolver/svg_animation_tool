@@ -191,21 +191,9 @@
  *
  * -- Converting frames to video ------------------------------------------------
  *
- *   Run these commands in bash file:
- *
- *       mkdir -p frames_png
- *       for f in frames_svg/frame_*.svg; do
- *         inkscape "$f" --export-type=png \
- *           --export-filename="frames_png/$(basename "${f%.svg}").png"
- *       done
- *       ffmpeg -framerate 30 -i frames_png/frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_demo.mp4
- *
- *   Clarifications about ffmpeg settings:
- *       produces H.264 video inside an MP4 file.
- *       -c:v libx264 -- uses the x264 (H.264) encoder.
- *       -pix_fmt yuv420p -- sets pixel format to YUV 4:2:0 planar (for wide compatibility).
- *       -crf 18 --- Constant Rate Factor, controls quality, very high, near-lossless.
- *       -preset medium -- default balance between encoder speed and compression.
+ *   Run the program:
+ *     render_svg_to_png.cpp
+ *   (also at github.com/CPSolver)
  *
  * -- About SVG interpolation ------------------------------------------------
  *
@@ -295,6 +283,15 @@ std::map<std::string,std::string> scriptText;
 
 // Toggled by full-skip-mode-on / full-skip-mode-off
 bool fullSkipMode = false;
+
+// Width of zero-padded frame number in SVG output filename.
+const int DIGITS = 5;
+
+// Output directory
+std::string output_dir = "frames_svg"; // can be changed by output-directory directive
+
+// Frames per animate step, can be changed by "animate" or "frames-per-step" directives
+int frames_per_step = 30;
 
 
 // ------------------------------------------------
@@ -1485,14 +1482,11 @@ void reportLabelMismatches(const SvgFile& svg) {
 // Frame writer
 // ------------------------------------------------
 
-void writeFrame(const std::string& outDir,
-                int                frameNum,
-                int                digits,
-                const std::string& svgContent)
+void writeFrame(int frameNum, const std::string& svgContent)
 {
     std::ostringstream fname;
-    fname << outDir << "/frame_"
-          << std::setw(digits) << std::setfill('0') << frameNum
+    fname << output_dir << "/frame_"
+          << std::setw(DIGITS) << std::setfill('0') << frameNum
           << ".svg";
     if (!fullSkipMode) {
         writeFile(fname.str(), svgContent);
@@ -1601,10 +1595,6 @@ int main(int argc, char* argv[]) {
     const std::string NARRATION_FILE   = "output_narration.txt";
     const std::string AUDIO_LIST_FILE  = "output_audio_narration_file_list.txt";
 
-    // ── Script-controlled options (set by directives before first animate) ────
-    int         frames_per_step = 30;          // frames-per-step directive
-    std::string output_dir      = "frames_svg"; // output-directory directive
-
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <script.txt>\n"
                   << "  file.svg   — register a keyframe\n"
@@ -1692,7 +1682,6 @@ int main(int argc, char* argv[]) {
     int  animateCount      = 0;
     bool prevWasAnimate    = false;
     bool firstSvgSeen      = false;  // locks output_dir and triggers cleanup
-    const int DIGITS    = 4;
 
     // ── Directive state ──────────────────────────────────────────────────────
     std::string              collectingMode;
@@ -1703,7 +1692,6 @@ int main(int argc, char* argv[]) {
     std::string currentSpreadStart = "top";  // updated by spread-out-start-*-end-*
     std::string currentSpreadEnd   = "top";  // updated by spread-out-start-*-end-*
     bool        skipMode = false;  // toggled by skip-mode-on / skip-mode-off
-    // frames_per_step and output_dir are declared above and updated by directives
 
     // Spread entries: one per spread-out directive, each with its own id snapshot
     std::vector<SpreadEntry> spreadEntries;
@@ -2082,7 +2070,7 @@ int main(int argc, char* argv[]) {
                                 || f == expandedFrames / 3
                                 || f == (2 * expandedFrames) / 3;
                 if (shouldWrite)
-                    writeFrame(output_dir, globalFrame, DIGITS, svgOut);
+                    writeFrame(globalFrame, svgOut);
                 ++globalFrame;
             }
 
@@ -2150,7 +2138,7 @@ int main(int argc, char* argv[]) {
                 // In skip mode, only write the first freeze frame;
                 // all duplicates are skipped but globalFrame still increments.
                 if (!skipMode || f == 0)
-                    writeFrame(output_dir, globalFrame, DIGITS, frozenSvg);
+                    writeFrame(globalFrame, frozenSvg);
                 ++globalFrame;
             }
 
