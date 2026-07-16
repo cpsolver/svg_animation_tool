@@ -513,8 +513,8 @@ std::string extractId(const std::string& s, size_t i) {
 bool isNamedView(const std::string& id) {
     if (id.size() <= 9) return false;
     if (id.substr(0, 9) != "namedview") return false;
-    for (size_t i = 9; i < id.size(); ++i)
-        if (!std::isdigit((unsigned char)id[i])) return false;
+    for (size_t charIdx = 9; charIdx < id.size(); ++charIdx)
+        if (!std::isdigit((unsigned char)id[charIdx])) return false;
     return id.size() > 9;  // must have at least one digit after "namedview"
 }
 
@@ -967,11 +967,11 @@ void detectChanges(
                     ++changedVals;
 
                     // Report geometric components that change from A to B
-                    const double PI = std::acos(-1.0);
-                    double dAngleDeg = (mc.decompB.angle - mc.decompA.angle) * 180.0 / PI;
-                    double dSx    = mc.decompB.sx    - mc.decompA.sx;
-                    double dSy    = mc.decompB.sy    - mc.decompA.sy;
-                    double dShear = mc.decompB.shear - mc.decompA.shear;
+                    // const double PI = std::acos(-1.0);
+                    // double dAngleDeg = (mc.decompB.angle - mc.decompA.angle) * 180.0 / PI;
+                    // double dSx    = mc.decompB.sx    - mc.decompA.sx;
+                    // double dSy    = mc.decompB.sy    - mc.decompA.sy;
+                    // double dShear = mc.decompB.shear - mc.decompA.shear;
                     // if (std::fabs(dAngleDeg) > 1e-6) trace << "    rotation: A=" << mc.decompA.angle * 180.0 / PI << " deg  B=" << mc.decompB.angle * 180.0 / PI << " deg  delta=" << dAngleDeg << " deg\n";
                     // if (std::fabs(dSx)       > 1e-6) trace << "    sx:       A=" << mc.decompA.sx    << "  B=" << mc.decompB.sx    << "  delta=" << dSx    << "\n";
                     // if (std::fabs(dSy)       > 1e-6) trace << "    sy:       A=" << mc.decompA.sy    << "  B=" << mc.decompB.sy    << "  delta=" << dSy    << "\n";
@@ -1533,6 +1533,12 @@ std::string framesToTime(int frame) {
 /// Format the estimated caption reading time (based on captions consumed
 /// so far — up to captionQueueIndex — and captionWordsPerMinute) as a
 /// whole-second time string (truncated, no decimal), MM:SS when >= 60s.
+
+// TODO: change caption code so start time for next caption is based on
+// number of words in current caption and caption words per minute.
+// Remove code that distributed time of captions based on number of captions
+// that span a sequence of animation events.
+
 std::string captionReadingTime() {
     int wordsConsumed = 0;
     for (int k = 0; k < captionQueueIndex && k < (int)captionWordCounts.size(); ++k)
@@ -1721,8 +1727,8 @@ int main(int argc, char* argv[]) {
     };
 
     // ── Process tokens ───────────────────────────────────────────────────────
-    for (size_t i = 0; i < scriptTokens.size(); ) {
-        const std::string& tok = scriptTokens[i];
+    for (size_t tokenIdx = 0; tokenIdx < scriptTokens.size(); ) {
+        const std::string& tok = scriptTokens[tokenIdx];
 
         // ── SVG filename ─────────────────────────────────────────────────────
         if (tok.size() > 4 && tok.substr(tok.size() - 4) == ".svg") {
@@ -1767,7 +1773,7 @@ int main(int argc, char* argv[]) {
                 summary << "Error loading '" << tok << "': " << e.what() << "\n";
                 window.clear();
                 windowUsed.clear();
-                ++i; continue;
+                ++tokenIdx; continue;
             }
             reportLabelMismatches(svg);
 
@@ -1775,7 +1781,7 @@ int main(int argc, char* argv[]) {
             window.push_back(std::move(svg));
             windowUsed.push_back(false);
             prevWasAnimate = false;
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── animate ──────────────────────────────────────────────────────────
@@ -1783,7 +1789,7 @@ int main(int argc, char* argv[]) {
             flushObjectIds();
             // Optional integer after 'animate' overrides frames_per_step
             // for this segment only.
-            int val = consumeOptionalInt(i);
+            int val = consumeOptionalInt(tokenIdx);
             int segFrames = (val > 0) ? val : frames_per_step;
             int captionStart = globalFrame;
             collectingMode = "";
@@ -1793,7 +1799,7 @@ int main(int argc, char* argv[]) {
                 std::cout  << msg << "\n";
                 trace      << msg << "\n";
                 summary    << msg << "\n";
-                ++i; continue;
+                ++tokenIdx; continue;
             }
 
             const SvgFile& svgA = window[0];
@@ -2054,21 +2060,21 @@ int main(int argc, char* argv[]) {
             // trace << "  expandedFrames=" << expandedFrames
             //       << "  midFrame=" << midFrame << "\n";
 
-            for (int f = fStart; f < expandedFrames; ++f) {
+            for (int animFrameNum = fStart; animFrameNum < expandedFrames; ++animFrameNum) {
                 double tLinear = (expandedFrames == 1)
                                  ? 0.0
-                                 : (double)f / (double)(expandedFrames - 1);
+                                 : (double)animFrameNum / (double)(expandedFrames - 1);
                 double tEased  = smootherstep(tLinear);
                 std::string svgOut = generateFrame(svgA, svgB,
-                                                   f, expandedFrames, midFrame,
+                                                   animFrameNum, expandedFrames, midFrame,
                                                    tEased);
                 // In skip mode, only write the first frame, the 1/3 frame,
                 // and the 2/3 frame; all others are skipped but globalFrame
                 // still increments so frame numbers remain consistent.
                 bool shouldWrite = !skipMode
-                                || f == fStart
-                                || f == expandedFrames / 3
-                                || f == (2 * expandedFrames) / 3;
+                                || animFrameNum == fStart
+                                || animFrameNum == expandedFrames / 3
+                                || animFrameNum == (2 * expandedFrames) / 3;
                 if (shouldWrite)
                     writeFrame(globalFrame, svgOut);
                 ++globalFrame;
@@ -2110,9 +2116,9 @@ int main(int argc, char* argv[]) {
             windowUsed[1] = true;
             prevWasAnimate = true;
 
-            consumePendingCaptions(captionStart, globalFrame, (int)i);
+            consumePendingCaptions(captionStart, globalFrame, (int)tokenIdx);
 
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── freeze N ─────────────────────────────────────────────────────────
@@ -2120,24 +2126,24 @@ int main(int argc, char* argv[]) {
             flushObjectIds();
             int captionStart = globalFrame;
             collectingMode = "";
-            if (i + 1 >= scriptTokens.size()) { ++i; continue; }
+            if (tokenIdx + 1 >= scriptTokens.size()) { ++tokenIdx; continue; }
             int freezeN = 0;
-            try { freezeN = std::stoi(scriptTokens[i + 1]); } catch (...) { ++i; continue; }
-            if (freezeN <= 0) { i += 2; continue; }
+            try { freezeN = std::stoi(scriptTokens[tokenIdx + 1]); } catch (...) { ++tokenIdx; continue; }
+            if (freezeN <= 0) { tokenIdx += 2; continue; }
             if (window.empty()) {
                 std::string msg = "Error: 'freeze' requires a keyframe but none is loaded. Skipping.";
                 std::cout  << msg << "\n";
                 trace      << msg << "\n";
                 summary    << msg << "\n";
-                i += 2; continue;
+                tokenIdx += 2; continue;
             }
             const SvgFile& current = window.back();
             std::string frozenSvg;
             for (const auto& ln : current.lines) frozenSvg += ln + '\n';
-            for (int f = 0; f < freezeN; ++f) {
+            for (int freezeFrameNum = 0; freezeFrameNum < freezeN; ++freezeFrameNum) {
                 // In skip mode, only write the first freeze frame;
                 // all duplicates are skipped but globalFrame still increments.
-                if (!skipMode || f == 0)
+                if (!skipMode || freezeFrameNum == 0)
                     writeFrame(globalFrame, frozenSvg);
                 ++globalFrame;
             }
@@ -2155,9 +2161,9 @@ int main(int argc, char* argv[]) {
 
             prevWasAnimate = false;
 
-            consumePendingCaptions(captionStart, globalFrame, (int)i);
+            consumePendingCaptions(captionStart, globalFrame, (int)tokenIdx);
 
-            i += 2; continue;
+            tokenIdx += 2; continue;
         }
 
         // ── object-ids ───────────────────────────────────────────────────────
@@ -2166,7 +2172,7 @@ int main(int argc, char* argv[]) {
             objectIds.clear();
             collectingMode = "object-ids";
             // trace << "object-ids: collecting\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── spread-out-start-X-end-Y direction directive ─────────────────────
@@ -2209,13 +2215,13 @@ int main(int argc, char* argv[]) {
             if (!valid)
                 std::cout << "WARNING: invalid spread-out direction token '"
                           << tok << "' — ignored.\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── spread-out ────────────────────────────────────────────────────────
         if (tok == "spread-out") {
             collectingMode = "";
-            spreadOut = consumeOptionalInt(i);
+            spreadOut = consumeOptionalInt(tokenIdx);
             if (spreadOut == -1) spreadOut = 1;
             // Snapshot current objectIds into a SpreadEntry
             SpreadEntry se;
@@ -2229,22 +2235,22 @@ int main(int argc, char* argv[]) {
             summary << "spread-out    : delay=" << spreadOut << "  ids:";
             for (const auto& id : objectIds) summary << " " << id;
             summary << "\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── arc-degrees — shape modifier, updates current trim angle ─────────
         if (tok == "arc-degrees") {
-            int val = consumeOptionalInt(i);
+            int val = consumeOptionalInt(tokenIdx);
             if (val != -1) currentArcDeg = val;
             trace   << "arc-degrees: " << currentArcDeg << "\n";
             summary << "arc-degrees   : " << currentArcDeg << "\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── arc-height — triggers arc for current object-ids ──────────────────
         if (tok == "arc-height") {
             collectingMode = "";
-            int peakPct = consumeOptionalInt(i);
+            int peakPct = consumeOptionalInt(tokenIdx);
             if (peakPct == -1) peakPct = 30;  // default 30%
             // Snapshot the current objectIds list into a new ArcEntry
             ArcEntry ae;
@@ -2262,7 +2268,7 @@ int main(int argc, char* argv[]) {
             for (const auto& id : objectIds) summary << " " << id;
             summary << "\n";
             // Do NOT flush/clear objectIds — the list may be reused by other directives
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── skip-mode-on / skip-mode-off ─────────────────────────────────────
@@ -2278,7 +2284,7 @@ int main(int argc, char* argv[]) {
             skipMode = true;
             trace   << "skip-mode-on\n";
             summary << "skip-mode-on\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         if (tok == "skip-mode-off") {
@@ -2287,7 +2293,7 @@ int main(int argc, char* argv[]) {
             skipMode = false;
             trace   << "skip-mode-off\n";
             summary << "skip-mode-off\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── full-skip-mode-on / full-skip-mode-off ─────────────────────────────────────
@@ -2301,7 +2307,7 @@ int main(int argc, char* argv[]) {
             fullSkipMode = true;
             trace   << "full-skip-mode-on\n";
             summary << "full-skip-mode-on\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         if (tok == "full-skip-mode-off") {
@@ -2310,42 +2316,42 @@ int main(int argc, char* argv[]) {
             fullSkipMode = false;
             trace   << "full-skip-mode-off\n";
             summary << "full-skip-mode-off\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── frames-per-step ──────────────────────────────────────────────────
         if (tok == "frames-per-step") {
             flushObjectIds();
             collectingMode = "";
-            int val = consumeOptionalInt(i);
+            int val = consumeOptionalInt(tokenIdx);
             if (val > 0) {
                 frames_per_step = val;
                 trace   << "frames-per-step: " << frames_per_step << "\n";
             } else {
                 std::cout << "WARNING: frames-per-step requires a positive integer — ignored.\n";
             }
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── captions-frames-per-second ───────────────────────────────────────
         if (tok == "captions-frames-per-second") {
             flushObjectIds();
             collectingMode = "";
-            int val = consumeOptionalInt(i);
+            int val = consumeOptionalInt(tokenIdx);
             if (val > 0) {
                 captions_frames_per_second = val;
                 trace   << "captions-frames-per-second: " << captions_frames_per_second << "\n";
             } else {
                 std::cout << "WARNING: captions-frames-per-second requires a positive integer — ignored.\n";
             }
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── caption-words-per-minute ──────────────────────────────────────────
         if (tok == "caption-words-per-minute") {
             flushObjectIds();
             collectingMode = "";
-            int val = consumeOptionalInt(i);
+            int val = consumeOptionalInt(tokenIdx);
             if (val > 0) {
                 captionWordsPerMinute = val;
                 trace   << "caption-words-per-minute: " << captionWordsPerMinute << "\n";
@@ -2353,7 +2359,7 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: caption-words-per-minute requires a positive integer — ignored.\n";
             }
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── desired-timestamp ─────────────────────────────────────────────────
@@ -2364,8 +2370,8 @@ int main(int argc, char* argv[]) {
         if (tok == "desired-timestamp") {
             flushObjectIds();
             collectingMode = "";
-            if (i + 1 < scriptTokens.size()) {
-                const std::string& tstr = scriptTokens[i + 1];
+            if (tokenIdx + 1 < scriptTokens.size()) {
+                const std::string& tstr = scriptTokens[tokenIdx + 1];
                 double desiredSecs = -1.0;
 
                 // Try MM:SS format first
@@ -2386,6 +2392,15 @@ int main(int argc, char* argv[]) {
                     int    actualFrames    = globalFrame - desiredTimestampLastFrame;
                     double desiredFramesD  = desiredInterval * captions_frames_per_second;
                     int    frameDiff       = actualFrames - (int)std::round(desiredFramesD);
+
+
+                    // TODO: get Claude to improve this new code ...
+                    // Jump ahead to desired frame number
+                    if (frameDiff < 0) {
+                        globalFrame = actualFrames - frameDiff;
+                        frameDiff = 0;
+                    }
+
 
                     std::string diffMsg;
                     if (frameDiff > 0)
@@ -2416,7 +2431,7 @@ int main(int argc, char* argv[]) {
 
                     desiredTimestampLastFrame   = globalFrame;
                     desiredTimestampLastDesired = desiredSecs;
-                    ++i;  // consume the time token
+                    ++tokenIdx;  // consume the time token
                 } else {
                     std::cout << "WARNING: desired-timestamp requires a time value "
                                  "(seconds or MM:SS) — ignored.\n";
@@ -2424,44 +2439,44 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── output-directory ─────────────────────────────────────────────────
         if (tok == "output-directory") {
             flushObjectIds();
             collectingMode = "";
-            if (i + 1 < scriptTokens.size()) {
-                const std::string& dir = scriptTokens[i + 1];
+            if (tokenIdx + 1 < scriptTokens.size()) {
+                const std::string& dir = scriptTokens[tokenIdx + 1];
                 if (firstSvgSeen) {
                     std::cout << "WARNING: output-directory ignored — "
                               << "cannot change after first SVG is loaded.\n";
-                    ++i;  // consume the name token
+                    ++tokenIdx;  // consume the name token
                 } else if (dir.find('.') != std::string::npos) {
                     std::cout << "WARNING: output-directory '" << dir
                               << "' contains a period — ignored.\n";
-                    ++i;
+                    ++tokenIdx;
                 } else {
                     output_dir = dir;
                     trace   << "output-directory: " << output_dir << "\n";
                     summary << "output-directory : " << output_dir << "\n";
-                    ++i;
+                    ++tokenIdx;
                 }
             } else {
                 std::cout << "WARNING: output-directory requires a name — ignored.\n";
             }
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         // ── Unknown token — add to active list, or warn ───────────────────────
         if (collectingMode == "object-ids") {
             objectIds.push_back(tok);
             trace << "  object-id: \"" << tok << "\"\n";
-            ++i; continue;
+            ++tokenIdx; continue;
         }
 
         std::cout << "WARNING: unknown script token '" << tok << "' — skipping.\n";
-        ++i;
+        ++tokenIdx;
     }
 
     // ── Flush any remaining objects ─────────────────────────────────
