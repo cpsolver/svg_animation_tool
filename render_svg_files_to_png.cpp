@@ -9,6 +9,10 @@
 //  It renders only some of the SVG files for testing the timing at
 //  fewer frames per second.
 //
+//  The full resolution mode checks for additional SVG files named
+//  "caption_frame_nnnnn" (where n indicates a digit) and overlays
+//  these captions on all animation frames.
+//
 //  All progress/diagnostic detail is written to output_trace_render.txt.
 //  The only thing written to standard output is "Done rendering".
 //
@@ -68,6 +72,7 @@ std::string read_file(const fs::path& path) {
                         std::istreambuf_iterator<char>());
 }
 
+// TODO move vector fs to global declaration, change function to no return value
 std::vector<fs::path> gather_input_files() {
     std::vector<fs::path> files;
     for (const auto& entry : fs::directory_iterator(INPUT_DIR)) {
@@ -75,6 +80,11 @@ std::vector<fs::path> gather_input_files() {
         const std::string name = entry.path().filename().string();
         if (name.rfind("frame_", 0) == 0 && entry.path().extension() == ".svg") {
             files.push_back(entry.path());
+        }
+        if ((!use_low_resolution) && (name.rfind("caption_frame_", 0) == 0) && (entry.path().extension() == ".svg")) {
+
+            // TODO: files.push_back onto separate caption-specific file list
+
         }
     }
     std::sort(files.begin(), files.end());
@@ -130,7 +140,10 @@ int main(int argc, char* argv[]) {
         }
         fs::create_directories(OUTPUT_DIR); // no error if it already exists
         g_trace.open(TRACE_PATH, std::ios::out | std::ios::trunc);
+
+        // TODO: change next line when change function gather_input_files
         std::vector<fs::path> inputs = gather_input_files();
+
         trace("Found " + std::to_string(inputs.size()) + " frame(s) in " +
               INPUT_DIR.string());
 
@@ -159,11 +172,17 @@ int main(int argc, char* argv[]) {
             std::string stem = input.stem().string();
             latestInputFrameNumber = extractFrameNum(stem);
 
-            // Calculate checksum of this SVG file.
+            // Calculate checksum of this SVG animation file.
             uint64_t checksum = fnv1a64(content);
 
             if (!use_low_resolution) {
                 // Normal (full resolution) mode
+
+                // TODO: if need to render new caption image, convert it
+                // from SVG to PNG using Inkscape, save it in temporary
+                // "caption_current.png" file.
+                // Also set have_prev as false.
+
                 fs::path output = OUTPUT_DIR / (stem + ".png");
 
                 if (have_prev && checksum == prev_checksum && fs::exists(prev_output)) {
@@ -182,6 +201,11 @@ int main(int argc, char* argv[]) {
                           "); falling back to rendering for " + input.string());
                 }
 
+                // TODO: may need to merge/overlay caption on top of new animation image.
+                // If so, change following code to write animation frame to temporary file
+                // and allow that temporary animation file to be used again if the caption
+                // changes.
+
                 std::cout << "." << std::flush;
                 trace("Rendering " + input.string());
                 bool ok = convert_svg_to_png(input, output);
@@ -190,6 +214,9 @@ int main(int argc, char* argv[]) {
                     prev_output   = output;
                     prev_checksum = checksum;
                     have_prev     = true;
+
+                    // TODO: changes here will be needed
+
                 } else {
                     trace("WARNING: no usable output for " + input.string() +
                           "; it will not be used as a copy source");
@@ -199,7 +226,11 @@ int main(int argc, char* argv[]) {
 
             } else {
                 // Low resolution mode
-                //
+                // Caption merging not supported
+
+                // TODO: move some of this code to earlier because it now will be
+                // used by normal resolution mode.
+
                 // Compute the output frame slot this input file starts at.
                 int thisOutputFrame = latestInputFrameNumber
                                       * g_lowResOutputFrameRate
@@ -227,6 +258,8 @@ int main(int argc, char* argv[]) {
                 bool isDuplicate = have_prev
                                    && checksum == prev_checksum
                                    && fs::exists(prev_output);
+
+
 
                 // Render the SVG to a temporary PNG once (only if not a duplicate).
                 // We render to the first output slot's filename, then copy for the rest.
