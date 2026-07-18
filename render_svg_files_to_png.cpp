@@ -42,37 +42,40 @@
 #include <unistd.h>
 #include <vector>
 #include <climits>
+#include <cstdlib>
 
 //  Specify settings.
-// "g_" prefix indicates global values
-const int g_input_frame_rate = 30;
-const int g_output_frame_rate = 3;
-bool use_low_resolution = false;
-bool have_captions = true;
+const int global_input_frame_rate = 30;
+const int global_output_frame_rate = 3;
+bool global_use_low_resolution = false;
+bool global_have_captions = true;
 
 namespace fs = std::filesystem;
 std::vector<fs::path> animation_files;
 std::vector<fs::path> caption_files;
 
 constexpr size_t INVALID_FRAME = static_cast<size_t>(-1);
-const fs::path INPUT_ANIMA_DIR = "frames_svg";
+const fs::path INPUT_ANIMATION_DIR = "frames_svg";
 const fs::path INPUT_CAPTION_DIR = "caption_frames";
 const fs::path OUTPUT_DIR = "frames_png";
 const fs::path TRACE_PATH = "output_trace_render.txt";
-const std::chrono::seconds COOLDOWN(2);
 
-std::ofstream g_trace_stream;
+const std::string output_rendered_caption_filename = "output_rendered_caption.png";
+fs::path input_caption_file_path;
+
+const std::chrono::seconds COOLDOWN(2);
+std::ofstream global_trace_stream;
 
 //  Write trace info to a trace file.
 void trace(const std::string& message) {
-    g_trace_stream << message << '\n';
-    g_trace_stream.flush();
+    global_trace_stream << message << '\n';
+    global_trace_stream.flush();
 }
 
 //  Get the names of animation files and caption files.
-//  Those names include frame numbers.
-bool gather_input_files() {
-    for (const auto& file_entry : fs::directory_iterator(INPUT_ANIMA_DIR)) {
+//  The filenames include frame numbers.
+void get_and_sort_animation_and_caption_filenames() {
+    for (const auto& file_entry : fs::directory_iterator(INPUT_ANIMATION_DIR)) {
         if (!file_entry.is_regular_file()) continue;
         std::string file_name = file_entry.path().filename().string();
         if ((file_name.rfind("frame_", 0) == 0) && (file_entry.path().extension() == ".svg")) {
@@ -88,10 +91,10 @@ bool gather_input_files() {
         }
     }
     std::sort(caption_files.begin(), caption_files.end());
-    return true;
+    return;
 }
 
-//  Render one file.  In other words, convert one SVG file into a PNG file.
+//  Render one file by converting it from SVG to PNG.
 bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::path& output_png_file_path) {
     pid_t pid = fork();
     if (pid < 0) {
@@ -101,13 +104,15 @@ bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::pat
     if (pid == 0) {
         //  execlp searches PATH itself in the child process; no shell
         //  is ever started.
-        if (!use_low_resolution) {
-            //  Inkscape is used at full resolution.
+        if (!global_use_low_resolution) {
+            //  At full resolution, use Inkscape.
             std::string export_arg = "--export-filename=" + output_png_file_path.string();
             execlp("inkscape", "inkscape", input_animation_file_path.c_str(), "--export-type=png",
                    export_arg.c_str(), static_cast<char*>(nullptr));
+            //  Write period to screen as progress indicator.
+            std::cout << "." << std::flush;
         } else {
-            //  ffmpeg's "convert" utility is used at low resolution.
+            //  At low resolution, use ffmpeg's "convert" utility.
             execlp("convert", "convert", "-density", "12", "-resize", "256x256", "-strip",
                    "-colors", "16", "-depth", "8", input_animation_file_path.c_str(),
                    output_png_file_path.c_str(), static_cast<char*>(nullptr));
@@ -126,7 +131,7 @@ bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::pat
 
 //  Extract a frame number from a filename.  For example the file "frame_10123"
 //  is for frame number 10123.
-int extractFrameNum(const std::string& filename_without_extension) {
+int extract_frame_number_from_filename(const std::string& filename_without_extension) {
     size_t index_of_last_underscore = filename_without_extension.rfind('_');
     if (index_of_last_underscore == std::string::npos) return 0;
     try { return std::stoi(filename_without_extension.substr(index_of_last_underscore + 1)); }
@@ -135,7 +140,7 @@ int extractFrameNum(const std::string& filename_without_extension) {
 
 //  Determines whether the "recent" or "next" frame number is numerically nearest
 //  to the calculated idealized_input_frame_number.
-size_t findNearestFrame(size_t idealized_input_frame_number,
+size_t get_nearest_frame(size_t idealized_input_frame_number,
                        size_t recent_frame_number,
                        size_t next_frame_number) {
     size_t distance_to_recent;
@@ -145,7 +150,7 @@ size_t findNearestFrame(size_t idealized_input_frame_number,
         distance_to_recent = recent_frame_number - idealized_input_frame_number;
     }
     size_t distance_to_next;
-    if (next_frame_number >= idealized_input_frame_number) {
+    if (idealized_input_frame_number < next_frame_number) {
         distance_to_next = next_frame_number - idealized_input_frame_number;
     } else {
         distance_to_next = idealized_input_frame_number - next_frame_number;
@@ -162,13 +167,13 @@ size_t findNearestFrame(size_t idealized_input_frame_number,
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "lowres") {
-            use_low_resolution = true;
+            global_use_low_resolution = true;
             break;
         }
     }
 
-    std::cout << "Input frame rate is " << g_input_frame_rate << std::endl;
-    std::cout << "Output frame rate is " << g_output_frame_rate << std::endl;
+    std::cout << "Input frame rate is " << global_input_frame_rate << std::endl;
+    std::cout << "Output frame rate is " << global_output_frame_rate << std::endl;
 
     try {
 
@@ -181,27 +186,27 @@ int main(int argc, char* argv[]) {
             }
         }
         fs::create_directories(OUTPUT_DIR); //  no error if it already exists
-        g_trace_stream.open(TRACE_PATH, std::ios::out | std::ios::trunc);
+        global_trace_stream.open(TRACE_PATH, std::ios::out | std::ios::trunc);
 
-        //  Point to, and count, the input SVG files, and handle small counts.
-        bool ok = gather_input_files();
+        //  Point to, and count, the input SVG files.
+        get_and_sort_animation_and_caption_filenames();
         trace("Found " + std::to_string(animation_files.size()) + " animation frames in " +
-              INPUT_ANIMA_DIR.string());
+              INPUT_ANIMATION_DIR.string());
         trace("Found " + std::to_string(caption_files.size()) + " caption frames in " +
               INPUT_CAPTION_DIR.string());
 
-        //  Exit if fewer than two animation frames.
-        if (animation_files.size() < 2) {
+        //  Exit if only a few animation frames.
+        if (animation_files.size() < 3) {
             std::cout << "Less than two animation frames found, so exiting" << std::endl;
             exit(1);
         }
 
-        //  If no caption files, flag this so captions are not handled.
+        //  If only a few caption files, do not handle captions.
         if (caption_files.empty()) {
-            have_captions = false;
+            global_have_captions = false;
             std::cout << "No captions" << std::endl;
         } else {
-            have_captions = true;
+            global_have_captions = true;
             std::cout << "Captions found" << std::endl;
         }
 
@@ -210,9 +215,9 @@ int main(int argc, char* argv[]) {
         size_t recent_animation_file_index = 0;
         size_t next_animation_file_index = 1;
         std::string filename_stem = animation_files[recent_animation_file_index].stem().string();
-        size_t recent_animation_frame_number = extractFrameNum(filename_stem);
+        size_t recent_animation_frame_number = extract_frame_number_from_filename(filename_stem);
         filename_stem = animation_files[next_animation_file_index].stem().string();
-        size_t next_animation_frame_number = extractFrameNum(filename_stem);
+        size_t next_animation_frame_number = extract_frame_number_from_filename(filename_stem);
         size_t rendered_animation_frame_number = -1;
 
         //  If there are captions, get the first two file frame numbers
@@ -222,31 +227,39 @@ int main(int argc, char* argv[]) {
         size_t recent_caption_frame_number;
         size_t next_caption_frame_number;
         size_t rendered_caption_frame_number = -1;
-        if (have_captions) {
+        if (global_have_captions) {
             filename_stem = caption_files[recent_caption_file_index].stem().string();
-            recent_caption_frame_number = extractFrameNum(filename_stem);
+            recent_caption_frame_number = extract_frame_number_from_filename(filename_stem);
             filename_stem = caption_files[next_caption_file_index].stem().string();
-            next_caption_frame_number = extractFrameNum(filename_stem);
+            next_caption_frame_number = extract_frame_number_from_filename(filename_stem);
         }
+
+        //  Build the path to the file that holds the current rendered caption PNG file.
+        //  It is overwritten at each new caption.
+        std::ostringstream oss_output_caption_filename;
+        oss_output_caption_filename << "output_rendered_caption.png";
+        std::filesystem::path output_rendered_caption_file_path;
+        output_rendered_caption_file_path = oss_output_caption_filename.str();
 
         //  Get the frame number of the last animation SVG file.
         size_t last_input_animation_file_index = animation_files.size() - 1;
         const fs::path& input_animation_file_path = animation_files[last_input_animation_file_index];
         std::string filename_without_extension = input_animation_file_path.stem().string();
-        size_t last_animation_frame_number = extractFrameNum(filename_without_extension);
+        size_t last_animation_frame_number = extract_frame_number_from_filename(filename_without_extension);
         std::cout << "Last frame number is " << last_animation_frame_number << std::endl;
 
-        //  Calculate number of output frames.
-        size_t number_of_output_frames = static_cast<size_t>(((last_animation_frame_number + 1) * g_output_frame_rate) / g_input_frame_rate);
+        //  Calculate the number of output frames.
+        size_t number_of_output_frames = static_cast<size_t>(((last_animation_frame_number + 1) * global_output_frame_rate) / global_input_frame_rate);
         std::cout << "Number of output frames is " << number_of_output_frames << std::endl;
 
         //  Begin loop for each output frame number.
         for (size_t output_frame_number = 0; output_frame_number <= number_of_output_frames; output_frame_number++) {
 
             //  Calculate idealized input frame number that corresponds to output_frame_number.
-            size_t idealized_input_frame_number = static_cast<size_t>((output_frame_number * g_input_frame_rate) / g_output_frame_rate);
+            size_t idealized_input_frame_number = static_cast<size_t>((output_frame_number * global_input_frame_rate) / global_output_frame_rate);
 
-            //  If needed, point to next animation frame file where frame number exceeds output_frame_number.
+            //  If now needed, point to next animation filename where frame number
+            //  exceeds output_frame_number.
             while ((next_animation_frame_number < idealized_input_frame_number) &&
                    (next_animation_file_index + 1 < animation_files.size())) {
                 recent_animation_file_index++;
@@ -254,11 +267,12 @@ int main(int argc, char* argv[]) {
                 recent_animation_frame_number = next_animation_frame_number;
                 const fs::path& input_animation_file_path = animation_files[next_animation_file_index];
                 std::string filename_without_extension = input_animation_file_path.stem().string();
-                next_animation_frame_number = extractFrameNum(filename_without_extension);
+                next_animation_frame_number = extract_frame_number_from_filename(filename_without_extension);
             }
 
-            //  If needed, point to next caption frame file where frame number exceeds output_frame_number.
-            if (have_captions) {
+            //  If now needed, point to next caption filename where frame number
+            //  exceeds output_frame_number.
+            if (global_have_captions) {
                 while ((next_caption_frame_number < idealized_input_frame_number) &&
                        (next_caption_file_index + 1 < caption_files.size())) {
                     recent_caption_file_index++;
@@ -266,72 +280,96 @@ int main(int argc, char* argv[]) {
                     recent_caption_frame_number = next_caption_frame_number;
                     const fs::path& input_caption_file_path = caption_files[next_caption_file_index];
                     std::string filename_without_extension = input_caption_file_path.stem().string();
-                    next_caption_frame_number = extractFrameNum(filename_without_extension);
+                    next_caption_frame_number = extract_frame_number_from_filename(filename_without_extension);
                 }
             }
 
-            //  If the next animation frame is needed, convert it from SVG to PNG.
-            size_t nearest_animation_frame_number = findNearestFrame(idealized_input_frame_number,
-                              recent_animation_frame_number,
-                              next_animation_frame_number);
-                if (nearest_animation_frame_number != rendered_animation_frame_number) {
-                    std::ostringstream oss_animation_filename;
-                    if (nearest_animation_frame_number == recent_animation_frame_number) {
-                        oss_animation_filename << "frame_" << std::setw(5) << std::setfill('0') << recent_animation_frame_number << ".png";
-                        rendered_animation_frame_number = recent_animation_frame_number;
-                    } else {
-                        oss_animation_filename << "frame_" << std::setw(5) << std::setfill('0') << next_animation_frame_number << ".png";
-                        rendered_animation_frame_number = next_animation_frame_number;
-                    }
-                    fs::path output_path = OUTPUT_DIR / oss_animation_filename.str();
-                    std::cout << "Need to render " << oss_animation_filename.str() << std::endl;
-
-            // // bool ok = convert_svg_to_png(input_animation_file_path, output_png_file_path);
-            //     std::cout << "." << std::flush;
-            //     if (ok) {
-            //         rendered_count++;
-            //     } else {
-            //         trace("WARNING: no usable output for " + input_animation_file_path.string() +
-            //               "; it will not be used as a copy source");
-            //         have_prev = false;
-            //         next_output_frame_number = next_output_frame_limit;
-            //         continue;
-            //     }
-
-
-                }
-
-
-            //  If the next caption frame is needed, convert it from SVG to PNG.
-            if (have_captions) {
-                size_t nearest_caption_frame_number = findNearestFrame(idealized_input_frame_number,
+            //  If the caption needs to change, or this is the first caption, convert the
+            //  caption SVG file into a PNG file named "output_rendered_caption.png".
+            //  This rendered PNG file is available to merge with each new animation frame.
+            if (global_have_captions) {
+                size_t nearest_caption_frame_number = get_nearest_frame(idealized_input_frame_number,
                                   recent_caption_frame_number,
                                   next_caption_frame_number);
                 if (nearest_caption_frame_number != rendered_caption_frame_number) {
-                    std::ostringstream oss_caption_filename;
-                    if (nearest_caption_frame_number == recent_caption_frame_number) {
-                        oss_caption_filename << "caption_frame_" << std::setw(5) << std::setfill('0') << recent_caption_frame_number << ".png";
-                        rendered_caption_frame_number = recent_caption_frame_number;
-                    } else {
-                        oss_caption_filename << "caption_frame_" << std::setw(5) << std::setfill('0') << next_caption_frame_number << ".png";
-                        rendered_caption_frame_number = next_caption_frame_number;
-                    }
-                    fs::path output_path = OUTPUT_DIR / oss_caption_filename.str();
-                    std::cout << "Need to render " << oss_caption_filename.str() << std::endl;
+                    rendered_caption_frame_number = nearest_caption_frame_number;
+                    // Build full input/output paths.
+                    std::ostringstream oss_input_filename;
+                    oss_input_filename << "caption_frame_" << std::setw(5)
+                        << std::setfill('0') << rendered_caption_frame_number << ".png";
+                    std::filesystem::path input_caption_file_path =
+                        std::filesystem::path(INPUT_CAPTION_DIR) / oss_input_filename.str();
+                    // Render new caption, ignore any error.
+//                    bool ok = convert_svg_to_png(input_caption_file_path, output_rendered_caption_file_path);
+                    std::cout << "From " << input_caption_file_path.string() << " to "
+                        << output_rendered_caption_file_path.string() << std::endl;
                 }
             }
 
+            //  Build the path that specifies the path and filename to the new
+            //  output PNG file.
+            std::ostringstream oss_target_filename;
+            oss_target_filename << "frame_" << std::setw(5)
+                << std::setfill('0') << output_frame_number << ".png";
+            std::filesystem::path output_target_file_path;
+            output_target_file_path = std::filesystem::path(OUTPUT_DIR) / oss_target_filename.str();
 
-            //  Need to overlay animation frame with caption frame.
-            //  Allow rendered animation file to be used again if caption changes.
-            size_t merged_animation_frame_number = rendered_animation_frame_number;
-            size_t merged_caption_frame_number = rendered_caption_frame_number;
-            size_t merged_output_frame_number = output_frame_number;
-            std::cout << "Merged frame " << merged_output_frame_number << " holds " << merged_animation_frame_number << " and " << merged_caption_frame_number << std::endl;
+            //  If the animation has changed, convert the new frame from SVG to PNG.
+            //  If captions are being handled, write the image to a file named
+            //  "output_rendered_animation.png".  If captions are not being handled,
+            //  write the image to the numbered frame PNG file.
 
+// [fix this]
+            std::filesystem::path output_rendered_animation_file_path = "";
+
+            size_t nearest_animation_frame_number = get_nearest_frame(idealized_input_frame_number,
+                recent_animation_frame_number, next_animation_frame_number);
+            if (nearest_animation_frame_number != rendered_animation_frame_number) {
+                // Build full input/output paths.
+                std::ostringstream oss_input_filename;
+                if (nearest_animation_frame_number == recent_animation_frame_number) {
+                    oss_input_filename << "frame_" << std::setw(5) << std::setfill('0') << recent_animation_frame_number << ".png";
+                    rendered_animation_frame_number = recent_animation_frame_number;
+                } else {
+                    oss_input_filename << "frame_" << std::setw(5) << std::setfill('0') << next_animation_frame_number << ".png";
+                    rendered_animation_frame_number = next_animation_frame_number;
+                }
+                std::filesystem::path input_animation_file_path =
+                    std::filesystem::path(INPUT_ANIMATION_DIR) / (oss_input_filename.str());
+                std::ostringstream oss_output_filename;
+                if (global_have_captions) {
+
+
+// [must be path, and constant, not string, not variable]
+                    output_rendered_animation_file_path = "output_rendered_animation.png";
+
+                } else {
+
+                    output_rendered_animation_file_path = output_target_file_path;
+
+                }
+                // Render new animation, ignore any error.
+//                bool ok = convert_svg_to_png(input_animation_file_path, output_rendered_animation_file_path);
+                std::cout << "From " << input_animation_file_path.string() << " to "
+                    << output_rendered_animation_file_path.string() << std::endl;
+            }
+
+            //  If captions are handled, overlay the caption on top of the animation frame,
+            //  using ImageMagick, and write to the final output PNG file.
+            // bash version: magick -i animation_frame.png -i caption_frame.png -filter_complex "overlay=0:0" merged_frame.png
+            if (global_have_captions) {
+                std::string string_animation_path = output_rendered_animation_file_path.string();
+                std::string string_caption_path = output_rendered_caption_file_path.string();
+                std::string string_target_path = output_target_file_path.string();
+//                execlp("magick", "magick", "-i", string_animation_path.c_str(), "-i",
+//                string_caption_path.c_str(), "-filter_complex", "overlay=0:0",
+//                string_target_path.c_str(), static_cast<char*>(nullptr));
+                std::cout << "Merged " << string_animation_path << " and " << string_caption_path
+                    << " into " << string_target_path << std::endl;
+            }
 
             //  CPU cooldown if Inkscape was used.
-            if (!use_low_resolution) {
+            if (!global_use_low_resolution) {
                 std::this_thread::sleep_for(COOLDOWN);
             }
 
@@ -340,13 +378,13 @@ int main(int argc, char* argv[]) {
 
         trace("Rendering finished");
     } catch (const std::exception& e) {
-        if (g_trace_stream.is_open()) {
+        if (global_trace_stream.is_open()) {
             trace(std::string("FATAL: ") + e.what());
         }
     }
 
-    if (g_trace_stream.is_open()) {
-        g_trace_stream.close();
+    if (global_trace_stream.is_open()) {
+        global_trace_stream.close();
     }
 
     std::cout << std::endl;
