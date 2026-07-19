@@ -177,7 +177,7 @@ int main(int argc, char* argv[]) {
 
     try {
 
-        //  Prepare to get files from specified directory.
+        //  Ensure output directory exists.
         if (fs::exists(OUTPUT_DIR)) {
             for (const auto& file_entry : fs::directory_iterator(OUTPUT_DIR)) {
                 if (file_entry.is_regular_file() && file_entry.path().extension() == ".png") {
@@ -189,6 +189,7 @@ int main(int argc, char* argv[]) {
         global_trace_stream.open(TRACE_PATH, std::ios::out | std::ios::trunc);
 
         //  Point to, and count, the input SVG files.
+        //  They are in two directories.
         get_and_sort_animation_and_caption_filenames();
         trace("Found " + std::to_string(animation_files.size()) + " animation frames in " +
               INPUT_ANIMATION_DIR.string());
@@ -212,6 +213,7 @@ int main(int argc, char* argv[]) {
 
         //  Get the first two animation file frame numbers.
         //  Use them as the "recent" and "next" animation frame numbers.
+        //  Also point to the filenames for these two files.
         size_t recent_animation_file_index = 0;
         size_t next_animation_file_index = 1;
         std::string filename_stem = animation_files[recent_animation_file_index].stem().string();
@@ -222,6 +224,7 @@ int main(int argc, char* argv[]) {
 
         //  If there are captions, get the first two file frame numbers
         //  and use them as "recent" and "next" caption frame numbers.
+        //  Also point to the filenames for these two files.
         size_t recent_caption_file_index = 0;
         size_t next_caption_file_index = 1;
         size_t recent_caption_frame_number;
@@ -233,6 +236,10 @@ int main(int argc, char* argv[]) {
             filename_stem = caption_files[next_caption_file_index].stem().string();
             next_caption_frame_number = extract_frame_number_from_filename(filename_stem);
         }
+
+        //  Store a file path that is set in one loop cycle and checked in later loop
+        //  cycles.  Initialize it so it is recognized as invalid at the first frame.
+        std::filesystem::path previous_output_target_file_path = "";
 
         //  Build the path to the file that holds the current rendered caption PNG file.
         //  It is overwritten at each new caption.
@@ -249,6 +256,8 @@ int main(int argc, char* argv[]) {
         std::cout << "Last frame number is " << last_animation_frame_number << std::endl;
 
         //  Calculate the number of output frames.
+        //  For testing scenarios the output frame rate will be much lower
+        //  than the input frame rate.
         size_t number_of_output_frames = static_cast<size_t>(((last_animation_frame_number + 1) * global_output_frame_rate) / global_input_frame_rate);
         std::cout << "Number of output frames is " << number_of_output_frames << std::endl;
 
@@ -293,12 +302,14 @@ int main(int argc, char* argv[]) {
                                   next_caption_frame_number);
                 if (nearest_caption_frame_number != rendered_caption_frame_number) {
                     rendered_caption_frame_number = nearest_caption_frame_number;
-                    // Build full input/output paths.
+                    // Build full input path.
                     std::ostringstream oss_input_filename;
                     oss_input_filename << "caption_frame_" << std::setw(5)
-                        << std::setfill('0') << rendered_caption_frame_number << ".png";
+                        << std::setfill('0') << rendered_caption_frame_number << ".svg";
                     std::filesystem::path input_caption_file_path =
                         std::filesystem::path(INPUT_CAPTION_DIR) / oss_input_filename.str();
+//                    std::filesystem::remove(output_rendered_caption_file_path);
+//                    std::cout << "Deleted " << output_rendered_caption_file_path.string() << std::endl;
                     // Render new caption, ignore any error.
 //                    bool ok = convert_svg_to_png(input_caption_file_path, output_rendered_caption_file_path);
                     std::cout << "From " << input_caption_file_path.string() << " to "
@@ -306,57 +317,76 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            //  Build the path that specifies the path and filename to the new
-            //  output PNG file.
+            //  Specify the final target path, in the output directory.
+            //  The filename includes the output frame number.
+            std::filesystem::path output_target_file_path;
             std::ostringstream oss_target_filename;
             oss_target_filename << "frame_" << std::setw(5)
                 << std::setfill('0') << output_frame_number << ".png";
-            std::filesystem::path output_target_file_path;
-            output_target_file_path = std::filesystem::path(OUTPUT_DIR) / oss_target_filename.str();
+            output_target_file_path = oss_target_filename.str();
+            //  Save a copy of this path in case the next frame is the same.
+            //  But do not save if this is the first frame.
+            if (previous_output_target_file_path == "") {
+                previous_output_target_file_path = output_target_file_path;
+            }
+
+            //  Specify the animation output path for this output frame.
+            //  When captions are present, every animation frame renders
+            //  into the same reused temporary filename,
+            //  "output_rendered_animation.png".
+            //  When there are no captions, the rendered PNG writes to
+            //  the target output PNG file.
+            std::filesystem::path output_rendered_animation_file_path;
+            std::ostringstream oss_output_filename;
+            if (global_have_captions) {
+                output_rendered_animation_file_path = "output_rendered_animation.png";
+            } else {
+                output_rendered_animation_file_path = output_target_file_path;
+            }
 
             //  If the animation has changed, convert the new frame from SVG to PNG.
-            //  If captions are being handled, write the image to a file named
-            //  "output_rendered_animation.png".  If captions are not being handled,
-            //  write the image to the numbered frame PNG file.
-
-// [fix this]
-            std::filesystem::path output_rendered_animation_file_path = "";
-
             size_t nearest_animation_frame_number = get_nearest_frame(idealized_input_frame_number,
                 recent_animation_frame_number, next_animation_frame_number);
-            if (nearest_animation_frame_number != rendered_animation_frame_number) {
-                // Build full input/output paths.
+            if ((nearest_animation_frame_number != rendered_animation_frame_number) || (rendered_animation_frame_number < 0)) {
+                // Build full input path.
                 std::ostringstream oss_input_filename;
-                if (nearest_animation_frame_number == recent_animation_frame_number) {
-                    oss_input_filename << "frame_" << std::setw(5) << std::setfill('0') << recent_animation_frame_number << ".png";
+                if ((nearest_animation_frame_number == recent_animation_frame_number) || (rendered_animation_frame_number < 0)) {
+                    oss_input_filename << "frame_" << std::setw(5) << std::setfill('0') << recent_animation_frame_number << ".svg";
                     rendered_animation_frame_number = recent_animation_frame_number;
                 } else {
-                    oss_input_filename << "frame_" << std::setw(5) << std::setfill('0') << next_animation_frame_number << ".png";
+                    oss_input_filename << "frame_" << std::setw(5) << std::setfill('0') << next_animation_frame_number << ".svg";
                     rendered_animation_frame_number = next_animation_frame_number;
                 }
                 std::filesystem::path input_animation_file_path =
                     std::filesystem::path(INPUT_ANIMATION_DIR) / (oss_input_filename.str());
-                std::ostringstream oss_output_filename;
-                if (global_have_captions) {
-
-
-// [must be path, and constant, not string, not variable]
-                    output_rendered_animation_file_path = "output_rendered_animation.png";
-
-                } else {
-
-                    output_rendered_animation_file_path = output_target_file_path;
-
-                }
+//                std::filesystem::remove(output_rendered_animation_file_path);
+//                std::cout << "Deleted " << output_rendered_animation_file_path.string() << std::endl;
                 // Render new animation, ignore any error.
 //                bool ok = convert_svg_to_png(input_animation_file_path, output_rendered_animation_file_path);
                 std::cout << "From " << input_animation_file_path.string() << " to "
                     << output_rendered_animation_file_path.string() << std::endl;
             }
 
-            //  If captions are handled, overlay the caption on top of the animation frame,
-            //  using ImageMagick, and write to the final output PNG file.
-            // bash version: magick -i animation_frame.png -i caption_frame.png -filter_complex "overlay=0:0" merged_frame.png
+            //  If captions are handled, and the previous output frame used the same animation
+            //  frame and same caption frame, copy the previous output frame, then repeat the loop.
+            if ((global_have_captions)
+                    && (rendered_animation_frame_number == recent_animation_frame_number)
+                    && (rendered_caption_frame_number == recent_caption_frame_number) && (output_frame_number > 0)) {
+//                std::filesystem::copy_file(previous_output_target_file_path, output_target_file_path,
+//                    std::filesystem::copy_options::overwrite_existing);
+                std::cout << "Copied " << previous_output_target_file_path.string()
+                    << " to " << output_target_file_path.string() << std::endl;
+                //  Keep track of the current target file path in case it should be copied
+                //  because of no change in animation or caption.
+                previous_output_target_file_path = output_target_file_path;
+                //  No need for cooldown.
+                continue;
+            }
+
+            //  If captions are handled, and either the animation frame or the caption frame
+            //  has changed, overlay the current caption on top of the current animation frame.
+            //  Use ImageMagick.  Write to the final output target PNG file.
+            //  bash version: magick -i animation_frame.png -i caption_frame.png -filter_complex "overlay=0:0" merged_frame.png
             if (global_have_captions) {
                 std::string string_animation_path = output_rendered_animation_file_path.string();
                 std::string string_caption_path = output_rendered_caption_file_path.string();
@@ -372,6 +402,10 @@ int main(int argc, char* argv[]) {
             if (!global_use_low_resolution) {
                 std::this_thread::sleep_for(COOLDOWN);
             }
+
+            //  Save the target file path so it can be copied during the next frame
+            //  if the animation and caption frames remain the same.
+            previous_output_target_file_path = output_target_file_path;
 
         //  Repeat loop for next output frame number.
         }
