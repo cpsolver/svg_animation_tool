@@ -273,10 +273,18 @@ std::vector<int> captionTokenMarker;
 struct CaptionEntry {
     int startFrame;
     int endFrame;
-    std::string text;
+    std::string text;           // bracket-stripped, safe for on-screen VTT captions
+    std::string narration_text; // raw text, brackets and all, for the narration file
 };
 std::vector<CaptionEntry> captionEntries;
 int captionQueueIndex = 0;
+
+// Frame at which the next caption is free to start, carried across calls to
+// consumePendingCaptions. Because caption durations are now driven by word
+// count, a caption can run past its segment's end frame.  This tracks that
+// so the next segment's captions continue from the time the previous caption
+// actually finished.
+int next_caption_frame = 0;
 
 // Global: parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
@@ -1514,10 +1522,10 @@ std::string frameToVtt(int frame) {
     return oss.str();
 }
 
-/// Format a frame count as a whole-second time string with no decimal,
-/// using MM:SS when >= 60 seconds, plain seconds otherwise.
-/// Truncates (does not round). E.g. 1831 frames at 30fps -> "1:01",
-/// 612 frames at 30fps -> "20".
+// Format a frame count as a whole-second time string with no decimal,
+// using MM:SS when >= 60 seconds, plain seconds otherwise.
+// Truncates (does not round). E.g. 1831 frames at 30fps -> "1:01",
+// 612 frames at 30fps -> "20".
 std::string framesToTime(int frame) {
     int totalSecs = (int)((double)frame / (double)captions_frames_per_second);
     if (totalSecs >= 60) {
@@ -1530,14 +1538,11 @@ std::string framesToTime(int frame) {
     return std::to_string(totalSecs);
 }
 
-/// Format the estimated caption reading time (based on captions consumed
-/// so far — up to captionQueueIndex — and captionWordsPerMinute) as a
-/// whole-second time string (truncated, no decimal), MM:SS when >= 60s.
-
-// TODO: change caption code so start time for next caption is based on
-// number of words in current caption and caption words per minute.
-// Remove code that distributed time of captions based on number of captions
-// that span a sequence of animation events.
+// Format the estimated caption reading time (based on captions consumed
+// so far — up to captionQueueIndex — and captionWordsPerMinute) as a
+// whole-second time string (truncated, no decimal), MM:SS when >= 60s.
+// Caption start/end frames are computed per-caption from word count and
+// captionWordsPerMinute (see consumePendingCaptions).
 
 std::string captionReadingTime() {
     int wordsConsumed = 0;
@@ -1554,15 +1559,50 @@ std::string captionReadingTime() {
     return std::to_string(totalSecs);
 }
 
-/// Consume all captions accumulated since the last segment AND positioned
-/// at or before the given token index (i.e. captions that appeared earlier
-/// in the script than, or as part of, the current animate/freeze token),
-/// and distribute them evenly across [segStart, segEnd). Each caption gets
-/// an equal share of the frame span; the last caption absorbs any remainder
-/// so the shares sum exactly to the full span. If no captions are pending,
-/// this is a no-op. Uses and advances the global captionQueueIndex.
+// Remove [...] bracketed notes entirely from a caption string (unlike
+// countWords, which only blanks them out for word-counting purposes), and
+// collapse any resulting runs of whitespace down to single spaces, trimming
+// leading/trailing whitespace. Used to produce the on-screen VTT caption
+// text, which must not show narration-only notes.
+std::string strip_bracketed_notes(const std::string& text) {
+    std::string stripped;
+    stripped.reserve(text.size());
+    int depth = 0;
+    for (char c : text) {
+        if (c == '[') { ++depth; }
+        else if (c == ']') { if (depth > 0) --depth; }
+        else if (depth == 0) { stripped += c; }
+    }
+    // Collapse whitespace runs and trim ends.
+    std::string collapsed;
+    collapsed.reserve(stripped.size());
+    bool in_space = false;
+    for (char c : stripped) {
+        if (std::isspace((unsigned char)c)) {
+            in_space = true;
+        } else {
+            if (in_space && !collapsed.empty()) collapsed += ' ';
+            in_space = false;
+            collapsed += c;
+        }
+    }
+    return collapsed;
+}
+
+// Consume all captions accumulated since the last segment AND positioned
+// at or before the given token index (i.e. captions that appeared earlier
+// in the script than, or as part of, the current animate/freeze token).
+// Each caption's duration is computed independently from its own word
+// count and captionWordsPerMinute.  Caption timing is sequential.  The
+// time at the end of one caption matches the time the next one starts,
+// except when the desired-timeframe directive makes adjustments.
+// If no captions are pending, this is a no-op. Uses and advances the
+// global captionQueueIndex and next_caption_frame.
 void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
 {
+    // Reminder: can remove segEnd from paramters if not used elsewhere.
+    (void)segEnd; // no longer used: durations now come from word count, not segment span
+
     // Count how many pending captions are positioned at or before the
     // current token — captions queued for a *later* part of the script
     // must not be swept up by an earlier segment.
@@ -1572,20 +1612,28 @@ void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
         ++n;
     if (n <= 0) return;
 
-    int span = segEnd - segStart;
-    int base = span / n;     // frames per caption, rounded down
-    int rem  = span % n;     // leftover frames, absorbed by the last caption
-
-    int cur = segStart;
+    // Start from when the previous caption actually finished, unless
+    // this segment starts later (e.g. after a stretch with no captions),
+    // in which case snap forward to the segment's own start.
+    int cur = std::max(segStart, next_caption_frame);
     for (int k = 0; k < n; ++k) {
-        int len = base + (k == n - 1 ? rem : 0);
+        int caption_index = captionQueueIndex + k;
+        int word_count = (caption_index < (int)captionWordCounts.size())
+                              ? captionWordCounts[caption_index]
+                              : 0;
+        // Frames = (words / words-per-minute) minutes worth of reading time,
+        // converted to frames via captions_frames_per_second. Rounded to the
+        // nearest frame rather than truncated.
+        int duration_frames = (int)((word_count * 60.0 / captionWordsPerMinute)
+                                     * captions_frames_per_second + 0.5);
         int start = cur;
-        int end   = cur + len;
-        captionEntries.push_back({start, end, captionQueue[captionQueueIndex++]});
+        int end   = cur + duration_frames;
+        const std::string& raw_caption_text = captionQueue[captionQueueIndex++];
+        captionEntries.push_back({start, end, strip_bracketed_notes(raw_caption_text), raw_caption_text});
         cur = end;
     }
+    next_caption_frame = cur;
 }
-
 
 
 // ------------------------------------------------
@@ -2500,7 +2548,7 @@ int main(int argc, char* argv[]) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
-        narration << captionSingleEntry.text << "\n\n";
+        narration << captionSingleEntry.narration_text << "\n\n";
     }
 
     // ── Print settings now that directives are all processed ─────────
