@@ -371,11 +371,10 @@ int main(int argc, char* argv[]) {
 
         //  If captions are handled, and the previous output frame used the same animation
         //  frame and same caption frame, copy the previous output frame, then repeat the loop.
-        if (false) {
-        // if ((global_have_captions)
-        //         && (rendered_animation_frame_number == previous_rendered_animation_frame_number)
-        //         && (rendered_caption_frame_number == previous_rendered_caption_frame_number)
-        //         && (output_frame_number > 0)) {
+        if ((global_have_captions)
+                && (rendered_animation_frame_number == previous_rendered_animation_frame_number)
+                && (rendered_caption_frame_number == previous_rendered_caption_frame_number)
+                && (output_frame_number > 0)) {
             std::filesystem::copy_file(previous_output_target_file_path, output_target_file_path,
                 std::filesystem::copy_options::overwrite_existing);
             trace << "Copied " << previous_output_target_file_path.string()
