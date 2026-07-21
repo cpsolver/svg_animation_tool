@@ -15,12 +15,16 @@
 
 using namespace std;
 
+ofstream trace;
+
 static const int framesPerSecond = 30;
 
 static const string inputVttFilename = "output_captions_and_timing.vtt";
 static const string inputSvgTemplateFilename = "caption_template.svg";
 static const string templateFileDir = "caption_frames/";
 static const string outFilePrefixSvg = "caption_frame_";
+static const string TRACE_FILE    = "output_trace_captions_to_svg.txt";
+
 
 static bool parseVttCueTimeRange(const string& line, double& startSeconds) {
     // Expected format (typical):
@@ -86,6 +90,11 @@ int main() {
         return 1;
     }
 
+    trace.open(TRACE_FILE);
+    if (!trace) {
+        cerr << "Failed to open output trace file: " << TRACE_FILE << "\n";
+        return 1;
+    }
     // Read entire template (then split around the first '>' and first '<' after it)
     // (This matches the intent of your pseudocode that searches for the line containing </text>.)
     string templateContent((istreambuf_iterator<char>(templateInputFile)), istreambuf_iterator<char>());
@@ -136,6 +145,7 @@ int main() {
         int frameNumber = static_cast<int>(startSeconds * framesPerSecond);
         if (frameNumber < 0) frameNumber = 0;
         frameNumberStart = formatFrameNumber5(frameNumber);
+        trace << "frame start: " << frameNumberStart << "\n\n";
 
         // Get next vttInputLine into outputCaptionText
         outputCaptionText.clear();
@@ -149,6 +159,7 @@ int main() {
             if (!outputCaptionText.empty()) outputCaptionText += "\n";
             outputCaptionText += vttInputLine;
         }
+        trace << outputCaptionText << "\n\n";
 
         // If caption text is empty, just continue (do not write an overlay)
         if (outputCaptionText.empty()) {
