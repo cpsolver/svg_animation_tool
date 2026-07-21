@@ -262,6 +262,7 @@ int captionWordsPerMinute = 130;  // set by caption-words-per-minute directive
 // captionQueueIndex at each segment to get the cumulative reading time
 // for captions consumed so far (not all captions in the script).
 std::vector<int> captionWordCounts;
+int wordsSinceDesiredTimeDirective = 0;
 
 std::vector<std::string> captionQueue;
 // Parallel to captionQueue: for each queued caption, the index (into the
@@ -1254,7 +1255,7 @@ std::string generateFrame(const SvgFile& svgA,
             line = patched;
         }
     }
-    // ── END NEW matrix interpolation ────────────────────────────────────────
+    // ── END NEW matrix interpolation ──────
 
     // Apply arc Y offsets for each ArcEntry
     static const std::regex numRe2(R"(-?(?:\d+\.?\d*|\.\d+))");
@@ -1593,16 +1594,12 @@ std::string strip_bracketed_notes(const std::string& text) {
 // at or before the given token index (i.e. captions that appeared earlier
 // in the script than, or as part of, the current animate/freeze token).
 // Each caption's duration is computed independently from its own word
-// count and captionWordsPerMinute.  Caption timing is sequential.  The
-// time at the end of one caption matches the time the next one starts,
-// except when the desired-timeframe directive makes adjustments.
-// If no captions are pending, this is a no-op. Uses and advances the
-// global captionQueueIndex and next_caption_frame.
-void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
+// count and captionWordsPerMinute.  The time at the end of one caption
+// equals the time the next one starts, except when the desired-timeframe
+// directive makes adjustments.  If no captions are pending, this is a no-op.
+// Uses and advances the global captionQueueIndex and next_caption_frame.
+void consumePendingCaptions(int segStart, int currentTokenIndex)
 {
-    // Reminder: can remove segEnd from paramters if not used elsewhere.
-    (void)segEnd; // no longer used: durations now come from word count, not segment span
-
     // Count how many pending captions are positioned at or before the
     // current token — captions queued for a *later* part of the script
     // must not be swept up by an earlier segment.
@@ -1618,9 +1615,10 @@ void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
     int cur = std::max(segStart, next_caption_frame);
     for (int k = 0; k < n; ++k) {
         int caption_index = captionQueueIndex + k;
-        int word_count = (caption_index < (int)captionWordCounts.size())
-                              ? captionWordCounts[caption_index]
-                              : 0;
+        int word_count = 0;
+        if (caption_index < (int)captionWordCounts.size()) {
+            word_count = captionWordCounts[caption_index];
+        }
         // Frames = (words / words-per-minute) minutes worth of reading time,
         // converted to frames via captions_frames_per_second. Rounded to the
         // nearest frame rather than truncated.
@@ -1631,6 +1629,7 @@ void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
         const std::string& raw_caption_text = captionQueue[captionQueueIndex++];
         captionEntries.push_back({start, end, strip_bracketed_notes(raw_caption_text), raw_caption_text});
         cur = end;
+        wordsSinceDesiredTimeDirective += word_count;
     }
     next_caption_frame = cur;
 }
@@ -1642,7 +1641,7 @@ void consumePendingCaptions(int segStart, int segEnd, int currentTokenIndex)
 
 int main(int argc, char* argv[]) {
 
-    // ── Hardcoded options ─────────────────────────────────────────────────────
+    // ── Hardcoded options ────
     const std::string TRACE_FILE    = "output_trace_animate.txt";
     const std::string SUMMARY_FILE  = "output_summary_animate.txt";
     const std::string CAPTIONS_FILE = "output_captions_and_timing.vtt";
@@ -1659,10 +1658,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ── Declare variables ─────────────────────────────────────────────────────
+    // ── Declare variables ────
     const std::string scriptPath = argv[1];
 
-    // ── Load script ──────────────────────────────────────────────────────────
+    // ── Load script ────
     std::vector<std::string> scriptTokens;
     try {
         scriptTokens = loadScript(scriptPath);
@@ -1675,7 +1674,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // ── Open output files ─────────────────────────────────────────
+    // ── Open output files ──────
     trace.open(TRACE_FILE);
     if (!trace) {
         std::cerr << "Error: cannot open trace file: " << TRACE_FILE << "\n";
@@ -1728,7 +1727,7 @@ int main(int argc, char* argv[]) {
     // Settings header printed to stdout/summary after all directives processed.
     // (frames_per_step and output_dir may be changed by directives.)
 
-    // ── Script execution state ───────────────────────────────────────────────
+    // ── Script execution state ──────
     std::deque<SvgFile> window;
     std::deque<bool>    windowUsed;
 
@@ -1737,7 +1736,7 @@ int main(int argc, char* argv[]) {
     bool prevWasAnimate    = false;
     bool firstSvgSeen      = false;  // locks output_dir and triggers cleanup
 
-    // ── Directive state ──────────────────────────────────────────────────────
+    // ── Directive state ─────
     std::string              collectingMode;
     std::vector<std::string> objectIds;
 
@@ -1774,11 +1773,11 @@ int main(int argc, char* argv[]) {
         objectIds.clear();   // prevent re-printing on next flush
     };
 
-    // ── Process tokens ───────────────────────────────────────────────────────
+    // ── Process tokens ────
     for (size_t tokenIdx = 0; tokenIdx < scriptTokens.size(); ) {
         const std::string& tok = scriptTokens[tokenIdx];
 
-        // ── SVG filename ─────────────────────────────────────────────────────
+        // ── SVG filename ────
         if (tok.size() > 4 && tok.substr(tok.size() - 4) == ".svg") {
             flushObjectIds();
             collectingMode = "";
@@ -1832,7 +1831,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── animate ──────────────────────────────────────────────────────────
+        // ── animate ─────
         if (tok == "animate") {
             flushObjectIds();
             // Optional integer after 'animate' overrides frames_per_step
@@ -2164,12 +2163,12 @@ int main(int argc, char* argv[]) {
             windowUsed[1] = true;
             prevWasAnimate = true;
 
-            consumePendingCaptions(captionStart, globalFrame, (int)tokenIdx);
+            consumePendingCaptions(captionStart, (int)tokenIdx);
 
             ++tokenIdx; continue;
         }
 
-        // ── freeze N ─────────────────────────────────────────────────────────
+        // ── freeze N ─────
         if (tok == "freeze") {
             flushObjectIds();
             int captionStart = globalFrame;
@@ -2209,12 +2208,12 @@ int main(int argc, char* argv[]) {
 
             prevWasAnimate = false;
 
-            consumePendingCaptions(captionStart, globalFrame, (int)tokenIdx);
+            consumePendingCaptions(captionStart, (int)tokenIdx);
 
             tokenIdx += 2; continue;
         }
 
-        // ── object-ids ───────────────────────────────────────────────────────
+        // ── object-ids ─────
         if (tok == "object-ids") {
             flushObjectIds();
             objectIds.clear();
@@ -2266,7 +2265,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── spread-out ────────────────────────────────────────────────────────
+        // ── spread-out ─────
         if (tok == "spread-out") {
             collectingMode = "";
             spreadOut = consumeOptionalInt(tokenIdx);
@@ -2319,7 +2318,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── skip-mode-on / skip-mode-off ─────────────────────────────────────
+        // ── skip-mode-on / skip-mode-off ─────
         // When skip mode is on, animate segments still run all calculations
         // (detectChanges, spread-out, arc, generateFrame for every frame) so
         // the trace file shows complete information, but only three frames are
@@ -2344,7 +2343,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── full-skip-mode-on / full-skip-mode-off ─────────────────────────────────────
+        // ── full-skip-mode-on / full-skip-mode-off ───────
         // When full skip mode is on, animate segments still run all calculations
         // (detectChanges, spread-out, arc, generateFrame for every frame) so
         // the trace file shows complete information, but SVG files are not written.
@@ -2367,7 +2366,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── frames-per-step ──────────────────────────────────────────────────
+        // ── frames-per-step ─────
         if (tok == "frames-per-step") {
             flushObjectIds();
             collectingMode = "";
@@ -2381,7 +2380,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── captions-frames-per-second ───────────────────────────────────────
+        // ── captions-frames-per-second ───────
         if (tok == "captions-frames-per-second") {
             flushObjectIds();
             collectingMode = "";
@@ -2395,7 +2394,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── caption-words-per-minute ──────────────────────────────────────────
+        // ── caption-words-per-minute ──────
         if (tok == "caption-words-per-minute") {
             flushObjectIds();
             collectingMode = "";
@@ -2410,11 +2409,13 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── desired-timestamp ─────────────────────────────────────────────────
+        // ── desired-timestamp ───────
         // Accepts a time as decimal seconds (e.g. "3.5") or MM:SS (e.g. "1:30").
         // Reports how many frames over or under the actual frame count is
         // relative to the desired elapsed time since the previous
         // desired-timestamp (or the start of the script if this is the first).
+        // Also reports the number of caption words per minute since the
+        // previous desired timestamp.
         if (tok == "desired-timestamp") {
             flushObjectIds();
             collectingMode = "";
@@ -2441,24 +2442,42 @@ int main(int argc, char* argv[]) {
                     double desiredFramesD  = desiredInterval * captions_frames_per_second;
                     int    frameDiff       = actualFrames - (int)std::round(desiredFramesD);
 
+                    // Diff goes to stdout and trace
+                    std::string diffMsg;
+                    if (frameDiff > 0) {
+                        diffMsg = std::to_string(frameDiff) + " frames too many";
+                    }
+                    else if (frameDiff < 0) {
+                        diffMsg = std::to_string(-frameDiff) + " frames too few, skipping to desired frame number";
+                    } else {
+                        diffMsg = "frames match desired";
+                    }
+                    std::string dtMsg = "  " + diffMsg;
+                    std::cout  << dtMsg << "\n";
+                    trace      << dtMsg << "\n";
 
-                    // TODO: get Claude to improve this new code ...
-                    // Jump ahead to desired frame number
+                    // If fewer frames than desired, jump ahead to desired frame number.
+                    // Rendering program should repeat same frame to match this skip in
+                    // frame counts.  If more frames than desired, do nothing.  If this
+                    // time matching is important, animator can use this info to reduce
+                    // the number of frames used for animate and freeze directives.
                     if (frameDiff < 0) {
-                        globalFrame = actualFrames - frameDiff;
-                        frameDiff = 0;
+                        globalFrame = desiredTimestampLastFrame + (int)std::round(desiredFramesD);
                     }
 
+                    // Measured caption words per minute goes to sequenceInfo.
+                    if (actualFrames > 1) {
+                        int measuredWordsPerMinute = static_cast<int>(
+                                std::round((wordsSinceDesiredTimeDirective * captions_frames_per_second * 60.0) /
+                                actualFrames)
+                                );
+                        sequenceInfo += "  words per minute " + std::to_string(measuredWordsPerMinute) + "\n\n";
+                    } else {
+                        sequenceInfo += "  no new frames since last desired timestamp\n\n";
+                    }
 
-                    std::string diffMsg;
-                    if (frameDiff > 0)
-                        diffMsg = std::to_string(frameDiff) + " frames too many";
-                    else if (frameDiff < 0)
-                        diffMsg = std::to_string(-frameDiff) + " frames too few";
-                    else
-                        diffMsg = "exact";
-
-                    // Format cumulative desired time as truncated MM:SS or seconds
+                    // Format cumulative desired time as truncated MM:SS or seconds.
+                    // Audio time goes to sequenceInfo.
                     int dTotalSecs = (int)desiredSecs;
                     std::string audioStr;
                     if (dTotalSecs >= 60) {
@@ -2470,14 +2489,10 @@ int main(int argc, char* argv[]) {
                     } else {
                         audioStr = std::to_string(dTotalSecs);
                     }
-
-                    // Diff goes to stdout and trace; audio line goes to sequenceInfo
-                    std::string dtMsg = "  " + diffMsg;
-                    std::cout  << dtMsg << "\n";
-                    trace      << dtMsg << "\n";
                     sequenceInfo += "  audio " + audioStr + "\n\n";
 
-                    desiredTimestampLastFrame   = globalFrame;
+                    wordsSinceDesiredTimeDirective = 0;
+                    desiredTimestampLastFrame = globalFrame;
                     desiredTimestampLastDesired = desiredSecs;
                     ++tokenIdx;  // consume the time token
                 } else {
@@ -2490,7 +2505,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── output-directory ─────────────────────────────────────────────────
+        // ── output-directory ───────
         if (tok == "output-directory") {
             flushObjectIds();
             collectingMode = "";
@@ -2558,7 +2573,7 @@ int main(int argc, char* argv[]) {
     summary << "Captions file  : " << CAPTIONS_FILE << "\n";
     summary << "Narration file : " << NARRATION_FILE << "\n";
 
-    // ── Final ────────────────────────────────────────────────────────────────
+    // ── Final ────────
     std::string doneMsg = "Done!  " + std::to_string(globalFrame)
                         + " frame(s) written to '" + output_dir + "/'.";
     std::cout  << "\n══════════════════════════════════════════════════\n"
