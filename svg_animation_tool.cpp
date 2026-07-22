@@ -249,6 +249,9 @@ std::string sequenceInfo;
 // Filename of the most recent svgB — written as the final entry in sequenceInfo.
 std::string lastSvgBFilename;
 
+// First frame number for first caption.
+int firstCaptionFrameNum = 30;
+
 // State for desired-timestamp directive: tracks the globalFrame and cumulative
 // desired seconds at the most recent desired-timestamp, so each new directive
 // reports frames over/under relative to the preceding one (not the script start).
@@ -285,7 +288,7 @@ int captionQueueIndex = 0;
 // count, a caption can run past its segment's end frame.  This tracks that
 // so the next segment's captions continue from the time the previous caption
 // actually finished.
-int next_caption_frame = 0;
+int next_caption_frame = firstCaptionFrameNum;
 
 // Global: parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
@@ -1598,7 +1601,7 @@ std::string strip_bracketed_notes(const std::string& text) {
 // equals the time the next one starts, except when the desired-timeframe
 // directive makes adjustments.  If no captions are pending, this is a no-op.
 // Uses and advances the global captionQueueIndex and next_caption_frame.
-void consumePendingCaptions(int segStart, int currentTokenIndex)
+void consumePendingCaptions(int currentTokenIndex)
 {
     // Count how many pending captions are positioned at or before the
     // current token — captions queued for a *later* part of the script
@@ -1612,7 +1615,7 @@ void consumePendingCaptions(int segStart, int currentTokenIndex)
     // Start from when the previous caption actually finished, unless
     // this segment starts later (e.g. after a stretch with no captions),
     // in which case snap forward to the segment's own start.
-    int cur = std::max(segStart, next_caption_frame);
+    int cur = next_caption_frame;
     for (int k = 0; k < n; ++k) {
         int caption_index = captionQueueIndex + k;
         int word_count = 0;
@@ -2163,7 +2166,7 @@ int main(int argc, char* argv[]) {
             windowUsed[1] = true;
             prevWasAnimate = true;
 
-            consumePendingCaptions(captionStart, (int)tokenIdx);
+            consumePendingCaptions((int)tokenIdx);
 
             ++tokenIdx; continue;
         }
@@ -2208,7 +2211,7 @@ int main(int argc, char* argv[]) {
 
             prevWasAnimate = false;
 
-            consumePendingCaptions(captionStart, (int)tokenIdx);
+            consumePendingCaptions((int)tokenIdx);
 
             tokenIdx += 2; continue;
         }
@@ -2474,6 +2477,16 @@ int main(int argc, char* argv[]) {
                         sequenceInfo += "  words per minute " + std::to_string(measuredWordsPerMinute) + "\n\n";
                     } else {
                         sequenceInfo += "  no new frames since last desired timestamp\n\n";
+                    }
+
+                    // If animation is still in progress at desired timestamp,
+                    // write a message showing seconds needed for completion.
+                    if (frameDiff > 0) {
+                        double excessSeconds = frameDiff / (double)captions_frames_per_second;
+                        std::ostringstream animMsg;
+                        animMsg << "  animation " << std::fixed << std::setprecision(1)
+                                << excessSeconds << " seconds too long, or must delay narration\n\n";
+                        sequenceInfo += animMsg.str();
                     }
 
                     // Format cumulative desired time as truncated MM:SS or seconds.
