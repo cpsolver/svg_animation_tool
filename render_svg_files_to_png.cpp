@@ -107,7 +107,6 @@ bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::pat
             execlp("inkscape", "inkscape", input_animation_file_path.c_str(), "--export-type=png",
                    export_arg.c_str(), static_cast<char*>(nullptr));
             //  Write period to screen as progress indicator.
-            std::cout << "." << std::flush;
         } else {
             //  At low resolution, use ffmpeg's "convert" utility.
             execlp("convert", "convert", "-density", "12", "-resize", "256x256", "-strip",
@@ -116,6 +115,9 @@ bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::pat
         }
         //  Only reached if exec itself failed (e.g. program not found).
         _exit(127);
+    }
+    if (!global_use_low_resolution) {
+        std::cout << "." << std::flush;
     }
     int status = 0;
     waitpid(pid, &status, 0);
