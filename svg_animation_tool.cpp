@@ -270,7 +270,7 @@ std::string lastSvgBFilename;
 // First frame number for first caption.
 int firstCaptionFrameNum = 30;
 
-// State for desired-timestamp directive: tracks the globalFrame and cumulative
+// Needed for desired-timestamp directive, track the globalFrame and cumulative
 // desired seconds at the most recent desired-timestamp, so each new directive
 // reports frames over/under relative to the preceding one (not the script start).
 int    desiredTimestampLastFrame   = 0;
@@ -2207,11 +2207,9 @@ int main(int argc, char* argv[]) {
             if (tokenIdx + 1 >= scriptTokens.size()) { ++tokenIdx; continue; }
             int freezeN = 0;
             try { freezeN = std::stoi(scriptTokens[tokenIdx + 1]); } catch (...) { ++tokenIdx; continue; }
-
-            // TODO: scale freezeN with percentScaleFreezeTime, round down, not up, but minimum value of 1
-
+            //  Scale freeze duration using percent value from percent-scale-freeze-time directive.
+            freezeN = (int)((freezeN * percentScaleFreezeTime ) / 100.0);
             freezeFramesSinceTimestamp += freezeN;
-
             if (freezeN <= 0) { tokenIdx += 2; continue; }
             if (window.empty()) {
                 std::string msg = "Error: 'freeze' requires a keyframe but none is loaded. Skipping.";
@@ -2512,7 +2510,10 @@ int main(int argc, char* argv[]) {
 
                     // If fewer frames than desired, jump ahead to desired frame number.
                     // Rendering program should repeat same frame to match this skip in
-                    // frame counts.  If more frames than desired, do nothing.
+                    // frame counts.  If more frames than desired, do nothing here.
+                    // If animation is running too slow, it can be solved by adopting the
+                    // suggested values for the directives percent-scale-freeze-time
+                    // and caption-words-per-minute.
                     if (frameDiff < 0) {
                         globalFrame = desiredTimestampLastFrame + (int)std::round(desiredFramesD);
                     }
@@ -2523,7 +2524,9 @@ int main(int argc, char* argv[]) {
                                 std::round((wordsSinceDesiredTimeDirective * captionsFramesPerSecond * 60.0) /
                                 actualFrames)
                                 );
-                        sequenceInfo += "  words per minute " + std::to_string(measuredWordsPerMinute) + "\n\n";
+                        sequenceInfo += "  words per minute " + std::to_string(measuredWordsPerMinute) + "\n"
+                                + "  freeze frames since timestamp " + std::to_string(freezeFramesSinceTimestamp)
+                                + "\n\n";
                     } else {
                         sequenceInfo += "  no new frames since last desired timestamp\n\n";
                     }
@@ -2531,41 +2534,52 @@ int main(int argc, char* argv[]) {
                     // If animation is still in progress at desired timestamp,
                     // write a message showing seconds needed for completion.
                     // Also suggest values for directives caption-words-per-minute
-                    // and percent-scale-freeze_time.
+                    // and percent-scale-freeze-time.
                     // If these values are specified just after the previous suggested-timestamp
                     // directive, the animations (if they contain a sufficient number of freeze
                     // frames) and captions will end at, or slightly before, the desired timestamp.
 
-                    if (true) {
-//                    if (frameDiff > 0) {
+                    // Calculate excess seconds.
+                    double excessSeconds = frameDiff / (double)captionsFramesPerSecond;
 
-                        // Calculate excess seconds.
-                        double excessSeconds = frameDiff / (double)captionsFramesPerSecond;
+                    // Calculate suggested value for percent-scale-freeze-time.
+                    int suggestedPercentScaleFreezeTime;
+                    if (freezeFramesSinceTimestamp > 1) {
+                        suggestedPercentScaleFreezeTime = (int)((percentScaleFreezeTime
+                                * frameDiff) / freezeFramesSinceTimestamp);
+                    } else {
+                        suggestedPercentScaleFreezeTime = 100;
+                    }
 
-                        // TODO: Base the following calculation on 
-                        // percentScaleFreezeTime and freezeFramesSinceTimestamp and other relevant values.
+                    // Calculate suggested value for caption-words-per-minute.
+                    int suggestedCaptionWordsPerMinute;
+                    if (captionWordsPerMinute > 1) {
+                        suggestedCaptionWordsPerMinute = (int)((excessSeconds
+                                * captionsFramesPerSecond * 100 ) / (captionWordsPerMinute * 60.0));
+                    } else {
+                        suggestedCaptionWordsPerMinute = 100;
+                    }
 
-                        // Calculate suggested value for percent-scale-freeze-time.
-                        int suggestedPercentScaleFreezeTime = 82;
-
-                        // TODO: Base the followiing calculation on 
-                        // captionWordsPerMinute and captionsFramesPerSecond and other relevant values.
-
-                        // Calculate suggested value for caption-words-per-minute.
-                        int suggestedCaptionWordsPerMinute = 93;
-
-                        std::ostringstream animMsg;
-                        animMsg << "  animation timing info and suggestions:\n  "
-                                << std::fixed << std::setprecision(1)
-                                << excessSeconds << " seconds too long/short\n"
+                    // Show calculations.
+                    std::ostringstream animMsg;
+                    animMsg << "  animation timing difference:\n  "
+                            << std::fixed << std::setprecision(1)
+                            << excessSeconds;
+                    if (excessSeconds == 0) {
+                        animMsg << " seconds, matches desired timestamp\n";
+                    } else if (excessSeconds < 0) {
+                        animMsg << " seconds, too short, freezing for this duration\n";
+                    } else {
+                        animMsg << " seconds, too long\n"
+                                << "  suggested changes:\n"
                                 << "  percent-scale-freeze-time "
                                 << std::fixed << std::setprecision(1)
                                 << suggestedPercentScaleFreezeTime << "\n"
                                 << "  caption-words-per-minute "
                                 << std::fixed << std::setprecision(1)
                                 << suggestedCaptionWordsPerMinute << "\n\n";
-                        sequenceInfo += animMsg.str();
                     }
+                    sequenceInfo += animMsg.str();
 
                     // Format cumulative desired time as truncated MM:SS or seconds.
                     // Audio time goes to sequenceInfo.
