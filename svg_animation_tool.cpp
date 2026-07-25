@@ -275,21 +275,30 @@ std::string lastSvgBFilename;
 // First frame number for first caption.
 int firstCaptionFrameNum = 30;
 
-// Needed for desired-timestamp directive, track the globalFrame and cumulative
-// desired seconds at the most recent desired-timestamp, so each new directive
-// reports frames over/under relative to the preceding one (not the script start).
-int    desiredTimestampLastFrame   = 0;
-double desiredTimestampLastDesired = 0.0;
-
-// Global variables
-// Value set by captions-frames-per-second directive.
+// Global values set by directives.
+// Output directory, can be changed by output-directory directive.
+std::string outputDir = "frames_svg";
+// Frames per second for caption timing calculations,
+// can be changed by captions-frames-per-second directive.
 int captionsFramesPerSecond = 30;
-// Value set by caption-words-per-minute directive.
+// Words per minute for caption timing calculations,
+// can be changed by caption-words-per-minute directive.
 int captionWordsPerMinute = 130;
-// Value set by percent-scale-freeze-time directive.
+// Scale factor for freeze frames, in percent "units",
+// can be changed by percent-scale-freeze-time directive.
 int percentScaleFreezeTime = 100;
-// Number of frames used by freeze directives since previous desired-timestamp.
-int freezeFramesSinceTimestamp = 0;
+// Toggled by full-skip-mode-on and full-skip-mode-off directives.
+bool fullSkipMode = false;
+
+// Frames per animate step, can be changed by "animate" or "frames-per-step" directives
+int framesPerStep = 30;
+
+// Global parsed script text blocks (prefix -> normalized text)
+std::map<std::string,std::string> scriptText;
+
+// Width of zero-padded frame number in SVG output filename.
+const int DIGITS = 5;
+
 // Per-caption word counts, parallel to captionQueue. Summed up to
 // captionQueueIndex at each segment to get the cumulative reading time
 // for captions consumed so far (not all captions in the script).
@@ -306,33 +315,26 @@ std::vector<int> captionTokenMarker;
 struct CaptionEntry {
     int startFrame;
     int endFrame;
-    std::string text;           // bracket-stripped, safe for on-screen VTT captions
+    std::string text;           // bracket-stripped, for on-screen VTT captions
     std::string narrationText; // raw text, brackets and all, for the narration file
 };
 std::vector<CaptionEntry> captionEntries;
 int captionQueueIndex = 0;
 
 // Frame at which the next caption is free to start, carried across calls to
-// consumePendingCaptions. Because caption durations are now driven by word
-// count, a caption can run past its segment's end frame.  This tracks that
-// so the next segment's captions continue from the time the previous caption
-// actually finished.
+// consumePendingCaptions. Because caption durations are driven by word count,
+// a caption can run beyond an animation segment's end frame.
 int nextCaptionFrame = firstCaptionFrameNum;
 
-// Global: parsed script text blocks (prefix -> normalized text)
-std::map<std::string,std::string> scriptText;
+// Needed for desired-timestamp directive.  Track the globalFrame and cumulative
+// desired seconds at the most recent desired-timestamp, so each new directive
+// counts frames since the preceding desired-timestamp directive.
+int desiredTimestampLastFrame   = 0;
+double desiredTimestampLastDesired = 0.0;
 
-// Toggled by full-skip-mode-on / full-skip-mode-off
-bool fullSkipMode = false;
+// Number of frames used by freeze directives since previous desired-timestamp.
+int freezeFramesSinceTimestamp = 0;
 
-// Width of zero-padded frame number in SVG output filename.
-const int DIGITS = 5;
-
-// Output directory
-std::string outputDir = "frames_svg"; // can be changed by output-directory directive
-
-// Frames per animate step, can be changed by "animate" or "frames-per-step" directives
-int framesPerStep = 30;
 
 
 // ------------------------------------------------
@@ -1612,7 +1614,7 @@ std::string strip_bracketed_notes(const std::string& text) {
 // Each caption's duration is computed independently based on its own word
 // count and captionWordsPerMinute.  The time at the end of one caption
 // equals the time the next one starts, except when the desired-timeframe
-// directive makes adjustments.  If no captions are pending, this is a no-op.
+// directive makes adjustments.  If no captions are pending, nothing is done.
 // Uses and advances the global captionQueueIndex and nextCaptionFrame.
 void consumePendingCaptions(int currentTokenIndex)
 {
@@ -1639,9 +1641,9 @@ void consumePendingCaptions(int currentTokenIndex)
         // converted to frames via captionsFramesPerSecond. Rounded to the
         // nearest frame rather than truncated.
         int duration_frames = (int)((word_count * 60.0 / captionWordsPerMinute)
-                                     * captionsFramesPerSecond + 0.5);
+                * captionsFramesPerSecond + 0.5);
         int start = cur;
-        int end   = cur + duration_frames;
+        int end = cur + duration_frames;
         const std::string& raw_caption_text = captionQueue[captionQueueIndex++];
         captionEntries.push_back({start, end, strip_bracketed_notes(raw_caption_text), raw_caption_text});
         cur = end;
@@ -2489,13 +2491,18 @@ int main(int argc, char* argv[]) {
                     summary << dtMsg << "\n";
 
                     // If fewer frames than desired, jump ahead to desired frame number.
-                    // Rendering program should repeat same frame to match this skip in
-                    // frame counts.  If more frames than desired, do nothing here.
-                    // If animation is running too slow, it can be solved by adopting the
-                    // suggested values for the directives percent-scale-freeze-time
-                    // and caption-words-per-minute.
+                    // This jump causes a skip in the generated SVG files to be rendered,
+                    // so the rendering program should handle this skip by repeating the
+                    // same frame until it reaches the frame number specified in the next
+                    // generated SVG frame.
+                    // No change occurs if there are more frames than desired, which means
+                    // the animation is running slow.  If this slowness occurs, the script
+                    // should be changed by using the directives percent-scale-freeze-time
+                    // and caption-words-per-minute, and adjusting their values as suggested
+                    // in the summary output file.
                     if (frameDiff < 0) {
                         globalFrame = desiredTimestampLastFrame + (int)std::round(desiredFramesD);
+                        nextCaptionFrame = globalFrame;
                     }
 
                     // Report measured caption words per minute.
@@ -2642,7 +2649,7 @@ int main(int argc, char* argv[]) {
         summary    << capMsg << "\n";
     }
 
-   // ── Write captions to VTT and narration files ──────────────────
+   // ── Write captions to VTT file and narration file ──────────────────
      for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
