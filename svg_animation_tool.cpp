@@ -2168,9 +2168,13 @@ int main(int argc, char* argv[]) {
             sequenceInfo += svgA.filename + "\n\n";
             for (const auto& id : changedIds)
                 sequenceInfo += "  " + id + "\n";
-            sequenceInfo += "\n  frames " + framesToTime(globalFrame) + "\n"
-                         + "  caption secs " + captionReadingTime() + "\n\n";
+            sequenceInfo += "\n" + svgB.filename + "\n";
+
             lastSvgBFilename = svgB.filename;
+
+            // Write timing info.
+            summary << "  frame time " << framesToTime(globalFrame) << "\n"
+                    << "  caption reading time " << captionReadingTime() << "\n\n";
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
@@ -2494,7 +2498,7 @@ int main(int argc, char* argv[]) {
                     double desiredFramesD  = desiredInterval * captionsFramesPerSecond;
                     int    frameDiff       = actualFrames - (int)std::round(desiredFramesD);
 
-                    // Diff goes to stdout and trace
+                    // Write difference info.
                     std::string diffMsg;
                     if (frameDiff > 0) {
                         diffMsg = std::to_string(frameDiff) + " frames too many";
@@ -2505,8 +2509,8 @@ int main(int argc, char* argv[]) {
                         diffMsg = "frames match desired";
                     }
                     std::string dtMsg = "  " + diffMsg;
-                    std::cout  << dtMsg << "\n";
-                    trace      << dtMsg << "\n";
+                    std::cout << dtMsg << "\n";
+                    summary << dtMsg << "\n";
 
                     // If fewer frames than desired, jump ahead to desired frame number.
                     // Rendering program should repeat same frame to match this skip in
@@ -2524,11 +2528,11 @@ int main(int argc, char* argv[]) {
                                 std::round((wordsSinceDesiredTimeDirective * captionsFramesPerSecond * 60.0) /
                                 actualFrames)
                                 );
-                        sequenceInfo += "  words per minute " + std::to_string(measuredWordsPerMinute) + "\n"
-                                + "  freeze frames since timestamp " + std::to_string(freezeFramesSinceTimestamp)
-                                + "\n\n";
+                        summary << "  words per minute " << measuredWordsPerMinute << "\n"
+                                << "  freeze frames since timestamp " << freezeFramesSinceTimestamp
+                                << "\n\n";
                     } else {
-                        sequenceInfo += "  no new frames since last desired timestamp\n\n";
+                        summary << "  no new frames since last desired timestamp\n\n";
                     }
 
                     // If animation is still in progress at desired timestamp,
@@ -2561,16 +2565,15 @@ int main(int argc, char* argv[]) {
                     }
 
                     // Show calculations.
-                    std::ostringstream animMsg;
-                    animMsg << "  animation timing difference:\n  "
+                    summary << "  animation timing difference:\n  "
                             << std::fixed << std::setprecision(1)
                             << excessSeconds;
                     if (excessSeconds == 0) {
-                        animMsg << " seconds, matches desired timestamp\n";
+                        summary << " seconds, matches desired timestamp\n";
                     } else if (excessSeconds < 0) {
-                        animMsg << " seconds, too short, freezing for this duration\n";
+                        summary << " seconds, too short, freezing for this duration\n";
                     } else {
-                        animMsg << " seconds, too long\n"
+                        summary << " seconds, too long\n"
                                 << "  suggested changes:\n"
                                 << "  percent-scale-freeze-time "
                                 << std::fixed << std::setprecision(1)
@@ -2579,7 +2582,6 @@ int main(int argc, char* argv[]) {
                                 << std::fixed << std::setprecision(1)
                                 << suggestedCaptionWordsPerMinute << "\n\n";
                     }
-                    sequenceInfo += animMsg.str();
 
                     // Format cumulative desired time as truncated MM:SS or seconds.
                     // Audio time goes to sequenceInfo.
@@ -2594,7 +2596,7 @@ int main(int argc, char* argv[]) {
                     } else {
                         audioStr = std::to_string(dTotalSecs);
                     }
-                    sequenceInfo += "  audio " + audioStr + "\n\n";
+                    summary << "  audio " << audioStr << "\n\n";
 
                     wordsSinceDesiredTimeDirective = 0;
                     desiredTimestampLastFrame = globalFrame;
