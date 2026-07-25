@@ -440,6 +440,6 @@ int main(int argc, char* argv[]) {
     }
 
     trace << "Done" << std::endl;
-    std::cout << "Done rendering" << std::endl;
+    std::cout << "\n" << "Done rendering" << std::endl;
     return 0;
 }
