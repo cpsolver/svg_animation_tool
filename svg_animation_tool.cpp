@@ -57,7 +57,7 @@
  *                      'animate', a warning is printed.
  *
  *     animate        - Interpolate between the two most recently seen
- *                      SVG files, emitting frames_per_step output frames
+ *                      SVG files, emitting framesPerStep output frames
  *                      with smootherstep easing. Requires at least two
  *                      SVG files. Consecutive 'animate' calls share their
  *                      boundary frame (last frame of segment N == first
@@ -136,11 +136,12 @@
  *
  *   Settings directives:
  *
- *     frames-per-step N  - Frames per animate segment (default 30).
+ *     frames-per-step N  - Default frames per animate segment if not specified.
+ *                          If not specified, default is 30.
  *                          Must be a positive integer.
  *
  *     captions-frames-per-second N - Frames per second for caption timing
- *                          calculations (default 30).
+ *                          calculations.  If not specified, default is 30.
  *
  *     output-directory D - Directory for output frames (default
  *                          "frames_svg"). Must not contain a period.
@@ -175,15 +176,19 @@
  *                          difference appears in stdout, in the trace file,
  *                          and in the sequence section of the summary file.
  *
- *     percent-scale-freeze-time N - Requests, as a percentage, the scale that
- *                          will adjust the freeze times.  A value of 100 means
- *                          100 percent, which specifies no change. When a
- *                          desired-timestamp value occurs before the prior
+ *     percent-scale-freeze-time N - A scale factor, expressed as a percent,
+ *                          scales (adjusts) the freeze times.  A value of 100
+ *                          means 100 percent, which specifies no change. When
+ *                          a desired-timestamp value occurs before the prior
  *                          animation is done, changing this value as suggested
  *                          in the summary info causes the animation to just
- *                          reach the desired timestamp, if there are a
+ *                          reach the desired timestamp, provided there are a
  *                          sufficient number of freeze frames since the
  *                          previous desired-timestamp directive.
+ * 
+ *     caption-words-per-minute - Specifies the rate at which captions are
+ *                          updated, based on the number of words in the
+ *                          captions.
  *
  *     Any other token    - If a collecting mode is active (e.g.
  *                          object-ids), added to the active list.
@@ -198,7 +203,7 @@
  *   output_summary_animate.txt - concise run summary: settings, per-segment
  *                                change counts, animated id list
  *
- *   Frames are written as: <output_dir>/frame_NNNN.svg
+ *   Frames are written as: <outputDir>/frame_NNNN.svg
  *   The frame counter is global across all animate/freeze operations.
  *   Trace and summary files are overwritten on each run.
  *   Easing is always smootherstep and is not configurable.
@@ -302,7 +307,7 @@ struct CaptionEntry {
     int startFrame;
     int endFrame;
     std::string text;           // bracket-stripped, safe for on-screen VTT captions
-    std::string narration_text; // raw text, brackets and all, for the narration file
+    std::string narrationText; // raw text, brackets and all, for the narration file
 };
 std::vector<CaptionEntry> captionEntries;
 int captionQueueIndex = 0;
@@ -312,7 +317,7 @@ int captionQueueIndex = 0;
 // count, a caption can run past its segment's end frame.  This tracks that
 // so the next segment's captions continue from the time the previous caption
 // actually finished.
-int next_caption_frame = firstCaptionFrameNum;
+int nextCaptionFrame = firstCaptionFrameNum;
 
 // Global: parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
@@ -324,10 +329,10 @@ bool fullSkipMode = false;
 const int DIGITS = 5;
 
 // Output directory
-std::string output_dir = "frames_svg"; // can be changed by output-directory directive
+std::string outputDir = "frames_svg"; // can be changed by output-directory directive
 
 // Frames per animate step, can be changed by "animate" or "frames-per-step" directives
-int frames_per_step = 30;
+int framesPerStep = 30;
 
 
 // ------------------------------------------------
@@ -1527,7 +1532,7 @@ void reportLabelMismatches(const SvgFile& svg) {
 void writeFrame(int frameNum, const std::string& svgContent)
 {
     std::ostringstream fname;
-    fname << output_dir << "/frame_"
+    fname << outputDir << "/frame_"
           << std::setw(DIGITS) << std::setfill('0') << frameNum
           << ".svg";
     if (!fullSkipMode) {
@@ -1571,27 +1576,6 @@ std::string framesToTime(int frame) {
     return std::to_string(totalSecs);
 }
 
-// Format the estimated caption reading time (based on captions consumed
-// so far — up to captionQueueIndex — and captionWordsPerMinute) as a
-// whole-second time string (truncated, no decimal), MM:SS when >= 60s.
-// Caption start/end frames are computed per-caption from word count and
-// captionWordsPerMinute (see consumePendingCaptions).
-
-std::string captionReadingTime() {
-    int wordsConsumed = 0;
-    for (int k = 0; k < captionQueueIndex && k < (int)captionWordCounts.size(); ++k)
-        wordsConsumed += captionWordCounts[k];
-    int totalSecs = (int)((wordsConsumed * 60.0) / captionWordsPerMinute);
-    if (totalSecs >= 60) {
-        int mins = totalSecs / 60;
-        int secs = totalSecs % 60;
-        std::ostringstream oss;
-        oss << mins << ":" << std::setw(2) << std::setfill('0') << secs;
-        return oss.str();
-    }
-    return std::to_string(totalSecs);
-}
-
 // Remove [...] bracketed notes entirely from a caption string (unlike
 // countWords, which only blanks them out for word-counting purposes), and
 // collapse any resulting runs of whitespace down to single spaces, trimming
@@ -1625,11 +1609,11 @@ std::string strip_bracketed_notes(const std::string& text) {
 // Consume all captions accumulated since the last segment AND positioned
 // at or before the given token index (i.e. captions that appeared earlier
 // in the script than, or as part of, the current animate/freeze token).
-// Each caption's duration is computed independently from its own word
+// Each caption's duration is computed independently based on its own word
 // count and captionWordsPerMinute.  The time at the end of one caption
 // equals the time the next one starts, except when the desired-timeframe
 // directive makes adjustments.  If no captions are pending, this is a no-op.
-// Uses and advances the global captionQueueIndex and next_caption_frame.
+// Uses and advances the global captionQueueIndex and nextCaptionFrame.
 void consumePendingCaptions(int currentTokenIndex)
 {
     // Count how many pending captions are positioned at or before the
@@ -1644,7 +1628,7 @@ void consumePendingCaptions(int currentTokenIndex)
     // Start from when the previous caption actually finished, unless
     // this segment starts later (e.g. after a stretch with no captions),
     // in which case snap forward to the segment's own start.
-    int cur = next_caption_frame;
+    int cur = nextCaptionFrame;
     for (int k = 0; k < n; ++k) {
         int caption_index = captionQueueIndex + k;
         int word_count = 0;
@@ -1663,7 +1647,7 @@ void consumePendingCaptions(int currentTokenIndex)
         cur = end;
         wordsSinceDesiredTimeDirective += word_count;
     }
-    next_caption_frame = cur;
+    nextCaptionFrame = cur;
 }
 
 // ------------------------------------------------
@@ -1743,7 +1727,7 @@ int main(int argc, char* argv[]) {
               << scriptTokens.size() << " token(s))\n\n";
 
     // Settings header printed after directives are processed (below).
-    // Summary header is written after output_dir is confirmed valid.
+    // Summary header is written after outputDir is confirmed valid.
 
     trace << "Script: " << scriptPath << "\n\n";
 
@@ -1756,7 +1740,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Settings header printed to stdout/summary after all directives processed.
-    // (frames_per_step and output_dir may be changed by directives.)
+    // (framesPerStep and outputDir may be changed by directives.)
 
     // ── Script execution state ──────
     std::deque<SvgFile> window;
@@ -1765,7 +1749,7 @@ int main(int argc, char* argv[]) {
     int  globalFrame       = 0;
     int  animateCount      = 0;
     bool prevWasAnimate    = false;
-    bool firstSvgSeen      = false;  // locks output_dir and triggers cleanup
+    bool firstSvgSeen      = false;  // locks outputDir and triggers cleanup
 
     // ── Directive state ─────
     std::string              collectingMode;
@@ -1813,20 +1797,20 @@ int main(int argc, char* argv[]) {
             flushObjectIds();
             collectingMode = "";
 
-            // First SVG seen: lock output_dir, create it, and delete any
+            // First SVG seen: lock outputDir, create it, and delete any
             // stale frame_NNNN.svg files from a previous run.
             if (!firstSvgSeen) {
                 firstSvgSeen = true;
                 try {
-                    fs::create_directories(output_dir);
+                    fs::create_directories(outputDir);
                 } catch (...) {
                     std::cerr << "Error: cannot create output directory: "
-                              << output_dir << "\n";
+                              << outputDir << "\n";
                     return 1;
                 }
                 int deleted = 0;
                 std::regex frameRe(R"(frame_[0-9]+\.svg)");
-                for (const auto& entry : fs::directory_iterator(output_dir)) {
+                for (const auto& entry : fs::directory_iterator(outputDir)) {
                     if (entry.is_regular_file() &&
                         std::regex_match(entry.path().filename().string(), frameRe)) {
                         fs::remove(entry.path());
@@ -1835,7 +1819,7 @@ int main(int argc, char* argv[]) {
                 }
                 if (deleted > 0)
                     std::cout << "  Cleared " << deleted
-                              << " old frame(s) from '" << output_dir << "/'\n";
+                              << " old frame(s) from '" << outputDir << "/'\n";
             }
 
             if (window.size() == 2 && !windowUsed[0])
@@ -1865,10 +1849,10 @@ int main(int argc, char* argv[]) {
         // ── animate ─────
         if (tok == "animate") {
             flushObjectIds();
-            // Optional integer after 'animate' overrides frames_per_step
+            // Optional integer after 'animate' overrides framesPerStep
             // for this segment only.
             int val = consumeOptionalInt(tokenIdx);
-            int segFrames = (val > 0) ? val : frames_per_step;
+            int segFrames = (val > 0) ? val : framesPerStep;
             int captionStart = globalFrame;
             collectingMode = "";
             if (window.size() < 2) {
@@ -2045,8 +2029,8 @@ int main(int argc, char* argv[]) {
                 // Find the worst-case combined rank (startRank + endRank).
                 // This determines the object with the shortest motion window.
                 // expanded must satisfy:
-                //   span = (expanded-1) - max_combined * delay >= frames_per_step
-                // so: expanded = frames_per_step + max_combined * delay + 1
+                //   span = (expanded-1) - max_combined * delay >= framesPerStep
+                // so: expanded = framesPerStep + max_combined * delay + 1
                 int maxCombined = 0;
                 for (const auto& id : activeIds)
                     maxCombined = std::max(maxCombined,
@@ -2162,7 +2146,8 @@ int main(int argc, char* argv[]) {
                                    + " frames";
             std::cout  << frameRange << "\n";
             summary << "  " << std::to_string(globalFrame - firstFrameNum)
-                                   << " frames written" << "\n\n";
+                    << " frames written" << "\n"
+                    << "  frame time " << framesToTime(globalFrame) << "\n\n";
 
             // Accumulate sequence info for this segment
             sequenceInfo += svgA.filename + "\n\n";
@@ -2172,9 +2157,6 @@ int main(int argc, char* argv[]) {
 
             lastSvgBFilename = svgB.filename;
 
-            // Write timing info.
-            summary << "  frame time " << framesToTime(globalFrame) << "\n"
-                    << "  caption reading time " << captionReadingTime() << "\n\n";
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
@@ -2232,22 +2214,16 @@ int main(int argc, char* argv[]) {
                     writeFrame(globalFrame, frozenSvg);
                 ++globalFrame;
             }
-
             std::string freezeLine = "Freeze: " + current.filename + "\n"
                 + "  " + std::to_string(freezeN) + " frames written" + "\n";
-            std::cout  << freezeLine << "\n";
-            summary    << freezeLine << "\n";
-
-            sequenceInfo += current.filename + "\n\n"
-                         + "  freeze\n"
-                         + "\n  frames " + framesToTime(globalFrame) + "\n"
-                         + "  caption secs " + captionReadingTime() + "\n\n";
+            std::cout << freezeLine << "\n";
+            sequenceInfo += current.filename + "\n"
+                         + "  freeze\n\n";
             lastSvgBFilename = "";  // freeze has no B keyframe
-
+            summary << freezeLine << "\n"
+                    << "  frame time " << framesToTime(globalFrame) << "\n\n";
             prevWasAnimate = false;
-
             consumePendingCaptions((int)tokenIdx);
-
             tokenIdx += 2; continue;
         }
 
@@ -2425,8 +2401,8 @@ int main(int argc, char* argv[]) {
             collectingMode = "";
             int val = consumeOptionalInt(tokenIdx);
             if (val > 0) {
-                frames_per_step = val;
-                trace   << "frames-per-step: " << frames_per_step << "\n";
+                framesPerStep = val;
+                trace   << "frames-per-step: " << framesPerStep << "\n";
             } else {
                 std::cout << "WARNING: frames-per-step requires a positive integer — ignored.\n";
             }
@@ -2522,7 +2498,7 @@ int main(int argc, char* argv[]) {
                         globalFrame = desiredTimestampLastFrame + (int)std::round(desiredFramesD);
                     }
 
-                    // Measured caption words per minute goes to sequenceInfo.
+                    // Report measured caption words per minute.
                     if (actualFrames > 1) {
                         int measuredWordsPerMinute = static_cast<int>(
                                 std::round((wordsSinceDesiredTimeDirective * captionsFramesPerSecond * 60.0) /
@@ -2628,9 +2604,9 @@ int main(int argc, char* argv[]) {
                               << "' contains a period — ignored.\n";
                     ++tokenIdx;
                 } else {
-                    output_dir = dir;
-                    trace   << "output-directory: " << output_dir << "\n";
-                    summary << "output-directory : " << output_dir << "\n";
+                    outputDir = dir;
+                    trace   << "output-directory: " << outputDir << "\n";
+                    summary << "output-directory : " << outputDir << "\n";
                     ++tokenIdx;
                 }
             } else {
@@ -2671,19 +2647,19 @@ int main(int argc, char* argv[]) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
-        narration << captionSingleEntry.narration_text << "\n\n";
+        narration << captionSingleEntry.narrationText << "\n\n";
     }
 
     // ── Print settings now that directives are all processed ─────────
-    std::cout << "Output dir     : " << output_dir << "/\n\n";
-    summary << "Output dir     : " << output_dir << "/\n"
+    std::cout << "Output dir     : " << outputDir << "/\n\n";
+    summary << "Output dir     : " << outputDir << "/\n"
             << "Trace file     : " << TRACE_FILE << "\n\n";
     summary << "Captions file  : " << CAPTIONS_FILE << "\n";
     summary << "Narration file : " << NARRATION_FILE << "\n";
 
     // ── Final ────────
     std::string doneMsg = "Done!  " + std::to_string(globalFrame)
-                        + " frame(s) written to '" + output_dir + "/'.";
+                        + " frame(s) written to '" + outputDir + "/'.";
     std::cout  << "\n══════════════════════════════════════════════════\n"
                << doneMsg << "\n\n"
                << "Convert SVG frames to PNG using program:\n\n"
