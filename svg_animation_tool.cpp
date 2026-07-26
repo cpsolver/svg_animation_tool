@@ -163,6 +163,10 @@
  *                          two directives can be used in pairs to selectively
  *                          skip some segments while fully rendering others.
  *
+ *     caption-words-per-minute - Specifies the rate at which captions are
+ *                          updated, based on the number of words in the
+ *                          captions.
+ *
  *     desired-timestamp T - Reports difference between actual elapsed time
  *                          and a desired cumulative timestamp T.  Also, if
  *                          possible, freezes current frame until that time
@@ -176,6 +180,12 @@
  *                          difference appears in stdout, in the trace file,
  *                          and in the sequence section of the summary file.
  *
+ *     caption-timing-animate-freeze - Specifies that caption timing is controlled
+ *                          by animate and freeze directives.  This is the default.
+ *
+ *     caption-timing-timestamp - Specifies that caption timing is controlled
+ *                          by desired-timestamp directives.
+ *
  *     percent-scale-freeze-time N - A scale factor, expressed as a percent,
  *                          scales (adjusts) the freeze times.  A value of 100
  *                          means 100 percent, which specifies no change. When
@@ -186,10 +196,6 @@
  *                          sufficient number of freeze frames since the
  *                          previous desired-timestamp directive.
  * 
- *     caption-words-per-minute - Specifies the rate at which captions are
- *                          updated, based on the number of words in the
- *                          captions.
- *
  *     Any other token    - If a collecting mode is active (e.g.
  *                          object-ids), added to the active list.
  *                          Otherwise warned and skipped.
@@ -276,22 +282,32 @@ std::string lastSvgBFilename;
 int firstCaptionFrameNum = 30;
 
 // Global values set by directives.
+
 // Output directory, can be changed by output-directory directive.
 std::string outputDir = "frames_svg";
+
 // Frames per second for caption timing calculations,
 // can be changed by captions-frames-per-second directive.
 int captionsFramesPerSecond = 30;
+
 // Words per minute for caption timing calculations,
 // can be changed by caption-words-per-minute directive.
 int captionWordsPerMinute = 130;
+
 // Scale factor for freeze frames, in percent "units",
 // can be changed by percent-scale-freeze-time directive.
 int percentScaleFreezeTime = 100;
+
 // Toggled by full-skip-mode-on and full-skip-mode-off directives.
 bool fullSkipMode = false;
 
 // Frames per animate step, can be changed by "animate" or "frames-per-step" directives
 int framesPerStep = 30;
+
+// Toggled by caption-timing-timestamp and caption-timing-animate-freeze
+// directives.  The default is true, which indicates animate and
+// freeze directives control the caption timing.
+bool captionTimingAnimateFreeze = true;
 
 // Global parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
@@ -1097,7 +1113,7 @@ void detectChanges(
             summary << id;
             first = false;
         }
-        summary << "\n";
+        summary << "\n\n";
     }
 }
 
@@ -1233,7 +1249,7 @@ std::string generateFrame(const SvgFile& svgA,
 // Matrix affine interpolation
 // ------------------------------------------------
 
-    // ── MatrixChange affine interpolation ───────────────────────────────
+    // ── MatrixChange affine interpolation ───────────────
     // For each element whose transform="matrix(...)" changed, decompose both
     // endpoint matrices, interpolate the geometric components, recompose, and
     // replace the matrix(...) token on the relevant line.
@@ -1724,7 +1740,7 @@ int main(int argc, char* argv[]) {
             narration << "\n";
     }
 
-    // ── Settings header — stdout and summary ─────────────────────────────────
+    // ── Settings header — stdout and summary ───────────────
     std::cout << "Script: " << scriptPath << "  ("
               << scriptTokens.size() << " token(s))\n\n";
 
@@ -1766,7 +1782,7 @@ int main(int argc, char* argv[]) {
     // Spread entries: one per spread-out directive, each with its own id snapshot
     std::vector<SpreadEntry> spreadEntries;
 
-    // ── Helper: consume optional integer parameter ───────────────────────────
+    // ── Helper: consume optional integer parameter ───────────────
     auto consumeOptionalInt = [&](size_t& idx) -> int {
         if (idx + 1 >= scriptTokens.size()) return -1;
         const std::string& next = scriptTokens[idx + 1];
@@ -1871,19 +1887,20 @@ int main(int argc, char* argv[]) {
 
             ++animateCount;
             std::string animHeader = "From: " + svgA.filename + "\n"
-                                   + "To:   " + svgB.filename;
-            if (val > 0)
-                animHeader += "\n  (frames: " + std::to_string(segFrames) + ")";
-            std::cout  << animHeader << "\n";
-            summary    << animHeader << "\n";
-            trace      << animHeader << "\n";
+                                   + "To:   " + svgB.filename + "\n";
+            std::cout  << animHeader;
+            summary    << animHeader;
+            trace      << animHeader;
+            if (val > 0) {
+                trace << "\n  (frames: " << std::to_string(segFrames) << ")";
+            }
 
             // Phase 3 — detect changes (fills global changes / matrixChanges)
             std::set<std::string> changedIds;
             detectChanges(svgA, svgB, changedIds);
             animDiag.clear();
 
-            // ── Step 1: spread-out timing ────────────────────────────────────
+            // ── Step 1: spread-out timing ───────────────
             // Build a quick lookup: id -> {xA, yA, xB, yB}
             struct Pos { double xA=0, yA=0, xB=0, yB=0; };
             std::map<std::string, Pos> posMap;
@@ -2147,9 +2164,12 @@ int main(int argc, char* argv[]) {
             std::string frameRange = std::to_string(globalFrame - firstFrameNum)
                                    + " frames";
             std::cout  << frameRange << "\n";
-            summary << "  " << std::to_string(globalFrame - firstFrameNum)
-                    << " frames written" << "\n"
-                    << "  frame time " << framesToTime(globalFrame) << "\n\n";
+            summary << "  " << std::to_string(segFrames) << " frames requested\n"
+                    << "  " << std::to_string(globalFrame - firstFrameNum)
+                    << " frames written, " << std::to_string(firstFrameNum)
+                    << " to " << std::to_string(globalFrame) << "\n"
+                    << "  time span " << framesToTime(firstFrameNum)
+                    << " to " << framesToTime(globalFrame) << "\n\n";
 
             // Accumulate sequence info for this segment
             sequenceInfo += svgA.filename + "\n\n";
@@ -2158,7 +2178,6 @@ int main(int argc, char* argv[]) {
             sequenceInfo += "\n" + svgB.filename + "\n";
 
             lastSvgBFilename = svgB.filename;
-
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
@@ -2181,10 +2200,11 @@ int main(int argc, char* argv[]) {
             windowUsed[0] = true;
             windowUsed[1] = true;
             prevWasAnimate = true;
-
-            consumePendingCaptions((int)tokenIdx);
-
-            ++tokenIdx; continue;
+            if (captionTimingAnimateFreeze) {
+                consumePendingCaptions((int)tokenIdx);
+            }
+            ++tokenIdx;
+            continue;
         }
 
         // ── freeze N ─────
@@ -2219,13 +2239,15 @@ int main(int argc, char* argv[]) {
             std::string freezeLine = "Freeze: " + current.filename + "\n"
                 + "  " + std::to_string(freezeN) + " frames written" + "\n";
             std::cout << freezeLine << "\n";
+            summary << freezeLine << "\n";
             sequenceInfo += current.filename + "\n"
-                         + "  freeze\n\n";
-            lastSvgBFilename = "";  // freeze has no B keyframe
-            summary << freezeLine << "\n"
-                    << "  frame time " << framesToTime(globalFrame) << "\n\n";
+                         + "  freeze\n";
+            // Freeze has no B keyframe.
+            lastSvgBFilename = "";
             prevWasAnimate = false;
-            consumePendingCaptions((int)tokenIdx);
+            if (captionTimingAnimateFreeze) {
+                consumePendingCaptions((int)tokenIdx);
+            }
             tokenIdx += 2; continue;
         }
 
@@ -2253,7 +2275,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── spread-out-start-X-end-Y direction directive ─────────────────────
+        // ── spread-out-start-X-end-Y direction directive ───────────────
         // Parses tokens like spread-out-start-top-end-bottom.
         // Start and end must be on the same axis (both vertical or both horizontal).
         // Valid directions: top, bottom (vertical) / left, right (horizontal).
@@ -2419,6 +2441,7 @@ int main(int argc, char* argv[]) {
             if (val > 0) {
                 captionsFramesPerSecond = val;
                 trace   << "captions-frames-per-second: " << captionsFramesPerSecond << "\n";
+                summary << "captions-frames-per-second: " << captionsFramesPerSecond << "\n";
             } else {
                 std::cout << "WARNING: captions-frames-per-second requires a positive integer — ignored.\n";
             }
@@ -2440,16 +2463,41 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
+        // ── caption-timing-animate-freeze / caption-timing-timestamp ─────
+        // When the directive caption-timing-animate-freeze is encountered,
+        // caption timing is controlled by animate and freeze directives.
+        // When the directive caption-timing-timestamp is encountered,
+        // caption timing is controlled by desired-timestamp directives.
+        if (tok == "caption-timing-animate-freeze") {
+            flushObjectIds();
+            collectingMode = "";
+            captionTimingAnimateFreeze = true;
+            trace   << "caption-timing-animate-freeze\n";
+            summary << "caption-timing-animate-freeze\n";
+            ++tokenIdx; continue;
+        }
+
+        if (tok == "caption-timing-timestamp") {
+            flushObjectIds();
+            collectingMode = "";
+            captionTimingAnimateFreeze = false;
+            trace   << "caption-timing-timestamp\n";
+            summary << "caption-timing-timestamp\n";
+            ++tokenIdx; continue;
+        }
+
         // ── desired-timestamp ───────
         // Accepts a time as decimal seconds (e.g. "3.5") or MM:SS (e.g. "1:30").
-        // If animation and captions were too slow to reach previous goal of
-        // desired-timestamp, adjusts the value of speedScaleAdjustment to
-        // scale timing speed.
-        // Reports how many frames over or under the actual frame count is
-        // relative to the desired elapsed time since the previous
-        // desired-timestamp (or the start of the script if this is the first).
-        // Also reports the number of caption words per minute since the
-        // previous desired timestamp.
+        // If animation was faster than needed to reach this desired timestamp,
+        // a freeze frame is effectively inserted here by skipping ahead to the
+        // desired frame number in the output SVG filename.
+        // If the animation was slower than needed, the desired timestamp has
+        // already been exceeded and this fact is reported.
+        // Calculations are done to suggest specific numbers that can be used
+        // in the script with the directives caption-words-per-minute
+        // and percent-scale-freeze-time.  These suggested values should cause
+        // the desired timestamp to be reached at the desired animation points
+        // and caption points.
         if (tok == "desired-timestamp") {
             flushObjectIds();
             collectingMode = "";
@@ -2476,20 +2524,6 @@ int main(int argc, char* argv[]) {
                     double desiredFramesD  = desiredInterval * captionsFramesPerSecond;
                     int    frameDiff       = actualFrames - (int)std::round(desiredFramesD);
 
-                    // Write difference info.
-                    std::string diffMsg;
-                    if (frameDiff > 0) {
-                        diffMsg = std::to_string(frameDiff) + " frames too many";
-                    }
-                    else if (frameDiff < 0) {
-                        diffMsg = std::to_string(-frameDiff) + " frames too few, skipping to desired frame number";
-                    } else {
-                        diffMsg = "frames match desired";
-                    }
-                    std::string dtMsg = "  " + diffMsg;
-                    std::cout << dtMsg << "\n";
-                    summary << dtMsg << "\n";
-
                     // If fewer frames than desired, jump ahead to desired frame number.
                     // This jump causes a skip in the generated SVG files to be rendered,
                     // so the rendering program should handle this skip by repeating the
@@ -2504,27 +2538,6 @@ int main(int argc, char* argv[]) {
                         globalFrame = desiredTimestampLastFrame + (int)std::round(desiredFramesD);
                         nextCaptionFrame = globalFrame;
                     }
-
-                    // Report measured caption words per minute.
-                    if (actualFrames > 1) {
-                        int measuredWordsPerMinute = static_cast<int>(
-                                std::round((wordsSinceDesiredTimeDirective * captionsFramesPerSecond * 60.0) /
-                                actualFrames)
-                                );
-                        summary << "  words per minute " << measuredWordsPerMinute << "\n"
-                                << "  freeze frames since timestamp " << freezeFramesSinceTimestamp
-                                << "\n\n";
-                    } else {
-                        summary << "  no new frames since last desired timestamp\n\n";
-                    }
-
-                    // If animation is still in progress at desired timestamp,
-                    // write a message showing seconds needed for completion.
-                    // Also suggest values for directives caption-words-per-minute
-                    // and percent-scale-freeze-time.
-                    // If these values are specified just after the previous suggested-timestamp
-                    // directive, the animations (if they contain a sufficient number of freeze
-                    // frames) and captions will end at, or slightly before, the desired timestamp.
 
                     // Calculate excess seconds.
                     double excessSeconds = frameDiff / (double)captionsFramesPerSecond;
@@ -2547,8 +2560,34 @@ int main(int argc, char* argv[]) {
                         suggestedCaptionWordsPerMinute = 100;
                     }
 
-                    // Show calculations.
-                    summary << "  animation timing difference:\n  "
+                    // Calulate measured caption words per minute.
+                    int measuredWordsPerMinute;
+                    if (actualFrames > 1) {
+                        measuredWordsPerMinute = static_cast<int>(
+                                std::round((wordsSinceDesiredTimeDirective * captionsFramesPerSecond * 60.0) /
+                                actualFrames)
+                                );
+                    }
+
+                    // Report difference info and calculations.
+                    // If animation is still in progress at desired timestamp,
+                    // write a message showing seconds needed for completion.
+                    // Also suggest values for directives caption-words-per-minute
+                    // and percent-scale-freeze-time.
+                    // If these values are specified just after the previous suggested-timestamp
+                    // directive, the animations (if they contain a sufficient number of freeze
+                    // frames) and captions will end at, or slightly before, the desired timestamp.
+                    std::string diffMsg;
+                    if (frameDiff > 0) {
+                        diffMsg = std::to_string(frameDiff) + " frames too many ********************";
+                    }
+                    else if (frameDiff < 0) {
+                        diffMsg = std::to_string(-frameDiff) + " frames too few, skipping to desired frame number ********************";
+                    } else {
+                        diffMsg = "frames match desired";
+                    }
+                    summary << "  " << diffMsg << "\n"
+                            << "  animation timing difference:\n  "
                             << std::fixed << std::setprecision(1)
                             << excessSeconds;
                     if (excessSeconds == 0) {
@@ -2563,23 +2602,31 @@ int main(int argc, char* argv[]) {
                                 << suggestedPercentScaleFreezeTime << "\n"
                                 << "  caption-words-per-minute "
                                 << std::fixed << std::setprecision(1)
-                                << suggestedCaptionWordsPerMinute << "\n\n";
+                                << suggestedCaptionWordsPerMinute << "\n";
                     }
-
-                    // Format cumulative desired time as truncated MM:SS or seconds.
-                    // Audio time goes to sequenceInfo.
-                    int dTotalSecs = (int)desiredSecs;
-                    std::string audioStr;
-                    if (dTotalSecs >= 60) {
-                        int dMins = dTotalSecs / 60;
-                        int dSecs = dTotalSecs % 60;
-                        std::ostringstream oss;
-                        oss << dMins << ":" << std::setw(2) << std::setfill('0') << dSecs;
-                        audioStr = oss.str();
+                    if (actualFrames > 1) {
+                        summary << "  freeze frames since timestamp " << freezeFramesSinceTimestamp
+                                << "\n";
                     } else {
-                        audioStr = std::to_string(dTotalSecs);
+                        summary << "  no new frames since last desired timestamp\n";
                     }
-                    summary << "  audio " << audioStr << "\n\n";
+                    if (actualFrames > 1) {
+                        summary << "  measured words per minute " << measuredWordsPerMinute << "\n";
+                    }
+                    summary << "\n";
+
+                    // // Format cumulative desired time as truncated MM:SS or seconds.
+                    // int dTotalSecs = (int)desiredSecs;
+                    // std::string audioStr;
+                    // if (dTotalSecs >= 60) {
+                    //     int dMins = dTotalSecs / 60;
+                    //     int dSecs = dTotalSecs % 60;
+                    //     std::ostringstream oss;
+                    //     oss << dMins << ":" << std::setw(2) << std::setfill('0') << dSecs;
+                    //     audioStr = oss.str();
+                    // } else {
+                    //     audioStr = std::to_string(dTotalSecs);
+                    // }
 
                     wordsSinceDesiredTimeDirective = 0;
                     desiredTimestampLastFrame = globalFrame;
@@ -2592,8 +2639,12 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
+            if (!captionTimingAnimateFreeze) {
+                consumePendingCaptions((int)tokenIdx);
+            }
             freezeFramesSinceTimestamp = 0;
-            ++tokenIdx; continue;
+            ++tokenIdx;
+            continue;
         }
 
         // ── output-directory ───────
@@ -2622,7 +2673,7 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
-        // ── Unknown token — add to active list, or warn ───────────────────────
+        // ── Unknown token — add to active list, or warn ───────────────
         if (collectingMode == "object-ids") {
             objectIds.push_back(tok);
             trace << "  object-id: \"" << tok << "\"\n";
@@ -2633,7 +2684,7 @@ int main(int argc, char* argv[]) {
         ++tokenIdx;
     }
 
-    // ── Flush any remaining objects ─────────────────────────────────
+    // ── Flush any remaining objects ───────────────
     flushObjectIds();
 
     // ── Warn about any captions that never got attached to a segment ──
