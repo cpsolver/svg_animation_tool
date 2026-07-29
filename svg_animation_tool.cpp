@@ -278,9 +278,6 @@ std::string sequenceInfo;
 // Filename of the most recent svgB — written as the final entry in sequenceInfo.
 std::string lastSvgBFilename;
 
-// First frame number for first caption.
-int firstCaptionFrameNum = 30;
-
 // Global values set by directives.
 
 // Output directory, can be changed by output-directory directive.
@@ -294,6 +291,10 @@ int captionsFramesPerSecond = 30;
 // can be changed by caption-words-per-minute directive.
 int captionWordsPerMinute = 130;
 
+// Seconds to delay the first caption in a sequence, can be changed
+// by seconds-delay-caption-next directive.
+double secondsDelayCaptionNext = 0.8;
+
 // Scale factor for freeze frames, in percent "units",
 // can be changed by percent-scale-freeze-time directive.
 int percentScaleFreezeTime = 100;
@@ -306,8 +307,11 @@ int framesPerStep = 30;
 
 // Toggled by caption-timing-timestamp and caption-timing-animate-freeze
 // directives.  The default is true, which indicates animate and
-// freeze directives control the caption timing.
+// freeze directives control the caption timing.  The false value specifies
+// caption timing is controlled by desired-timestamp directives.
 bool captionTimingAnimateFreeze = true;
+
+// Other global values and objects.
 
 // Global parsed script text blocks (prefix -> normalized text)
 std::map<std::string,std::string> scriptText;
@@ -337,15 +341,22 @@ struct CaptionEntry {
 std::vector<CaptionEntry> captionEntries;
 int captionQueueIndex = 0;
 
+// Pointer to last caption handled at desired-timestamp directive.
+int indexCaptionLastAtDesiredTimestamp = -1;
+
 // Frame at which the next caption is free to start, carried across calls to
 // consumePendingCaptions. Because caption durations are driven by word count,
 // a caption can run beyond an animation segment's end frame.
-int nextCaptionFrame = firstCaptionFrameNum;
+// This frame is initialized so the first caption appears at
+// secondsDelayCaptionNext.  If the seconds-delay-caption-next directive is
+// used before the first caption, that supplied delay will be used instead of
+// the initial value calculated here.
+int nextCaptionFrame = static_cast<int>(captionsFramesPerSecond * secondsDelayCaptionNext);
 
 // Needed for desired-timestamp directive.  Track the globalFrame and cumulative
 // desired seconds at the most recent desired-timestamp, so each new directive
 // counts frames since the preceding desired-timestamp directive.
-int desiredTimestampLastFrame   = 0;
+int frameAtDesiredTimestamp = 0;
 double desiredTimestampLastDesired = 0.0;
 
 // Number of frames used by freeze directives since previous desired-timestamp.
@@ -1634,8 +1645,11 @@ std::string strip_bracketed_notes(const std::string& text) {
 // Uses and advances the global captionQueueIndex and nextCaptionFrame.
 void consumePendingCaptions(int currentTokenIndex)
 {
+    int captionCurrentFrame;
+    int captionStartFrame;
+    int captionEndFrame;
     // Count how many pending captions are positioned at or before the
-    // current token — captions queued for a *later* part of the script
+    // current token — captions queued for a later part of the script
     // must not be swept up by an earlier segment.
     int n = 0;
     while (captionQueueIndex + n < (int)captionQueue.size() &&
@@ -1643,29 +1657,46 @@ void consumePendingCaptions(int currentTokenIndex)
         ++n;
     if (n <= 0) return;
 
-    // Start from when the previous caption actually finished, unless
-    // this segment starts later (e.g. after a stretch with no captions),
-    // in which case snap forward to the segment's own start.
-    int cur = nextCaptionFrame;
+    // Calculate the frame at which the first caption in this sequence begins.
+    // It is the time when the previous caption finished.
+    // This applies whether caption timing is controlled by animate and
+    // freeze directives, or by desired-timestamp directives.
+    // If this is the first caption sequence, use the delay specified by
+    // secondsDelayCaptionNext.
+    // If caption timing is controlled by desired-timestamp directives,
+    // adjust the ending time of the previous caption to match the
+    // possibly adjusted time based on the desired timestamp.
+    if (captionEntries.empty()) {
+        captionCurrentFrame = static_cast<int>(captionsFramesPerSecond * secondsDelayCaptionNext);
+    } else {
+        if (captionTimingAnimateFreeze) {
+            captionCurrentFrame = captionEntries.back().endFrame;
+        } else {
+            captionCurrentFrame = frameAtDesiredTimestamp + static_cast<int>(captionsFramesPerSecond * secondsDelayCaptionNext);
+            captionEntries.back().endFrame = captionCurrentFrame;
+        }
+    }
+
+    // Calculate the start and end times for each of the accumulated captions.
     for (int k = 0; k < n; ++k) {
-        int caption_index = captionQueueIndex + k;
-        int word_count = 0;
-        if (caption_index < (int)captionWordCounts.size()) {
-            word_count = captionWordCounts[caption_index];
+        int captionIndex = captionQueueIndex + k;
+        int wordCount = 0;
+        if (captionIndex < (int)captionWordCounts.size()) {
+            wordCount = captionWordCounts[captionIndex];
         }
         // Frames = (words / words-per-minute) minutes worth of reading time,
         // converted to frames via captionsFramesPerSecond. Rounded to the
         // nearest frame rather than truncated.
-        int duration_frames = (int)((word_count * 60.0 / captionWordsPerMinute)
+        int durationFrames = (int)((wordCount * 60.0 / captionWordsPerMinute)
                 * captionsFramesPerSecond + 0.5);
-        int start = cur;
-        int end = cur + duration_frames;
-        const std::string& raw_caption_text = captionQueue[captionQueueIndex++];
-        captionEntries.push_back({start, end, strip_bracketed_notes(raw_caption_text), raw_caption_text});
-        cur = end;
-        wordsSinceDesiredTimeDirective += word_count;
+        captionStartFrame = captionCurrentFrame;
+        captionEndFrame = captionCurrentFrame + durationFrames;
+        const std::string& rawCaptionText = captionQueue[captionQueueIndex++];
+        captionEntries.push_back({captionStartFrame, captionEndFrame, strip_bracketed_notes(rawCaptionText), rawCaptionText});
+        captionCurrentFrame = captionEndFrame;
+        wordsSinceDesiredTimeDirective += wordCount;
     }
-    nextCaptionFrame = cur;
+    nextCaptionFrame = captionCurrentFrame;
 }
 
 // ------------------------------------------------
@@ -1761,26 +1792,26 @@ int main(int argc, char* argv[]) {
     // (framesPerStep and outputDir may be changed by directives.)
 
     // ── Script execution state ──────
-    std::deque<SvgFile> window;
-    std::deque<bool>    windowUsed;
+    std::deque<SvgFile>  window;
+    std::deque<bool>  windowUsed;
 
-    int  globalFrame       = 0;
-    int  animateCount      = 0;
-    bool prevWasAnimate    = false;
-    bool firstSvgSeen      = false;  // locks outputDir and triggers cleanup
+    int  globalFrame  = 0;
+    int  animateCount  = 0;
+    bool prevWasAnimate  = false;
+    bool firstSvgSeen  = false;  // locks outputDir and triggers cleanup
 
     // ── Directive state ─────
-    std::string              collectingMode;
-    std::vector<std::string> objectIds;
+    std::string  collectingMode;
+    std::vector<std::string>  objectIds;
 
-    int spreadOut     = -1;
-    int         currentArcDeg   = 20;    // updated by arc-degrees
+    int spreadOut  = -1;
+    int  currentArcDeg   = 20;    // updated by arc-degrees
     std::string currentSpreadStart = "top";  // updated by spread-out-start-*-end-*
     std::string currentSpreadEnd   = "top";  // updated by spread-out-start-*-end-*
-    bool        skipMode = false;  // toggled by skip-mode-on / skip-mode-off
+    bool  skipMode = false;  // toggled by skip-mode-on / skip-mode-off
 
     // Spread entries: one per spread-out directive, each with its own id snapshot
-    std::vector<SpreadEntry> spreadEntries;
+    std::vector<SpreadEntry>  spreadEntries;
 
     // ── Helper: consume optional integer parameter ───────────────
     auto consumeOptionalInt = [&](size_t& idx) -> int {
@@ -1792,6 +1823,20 @@ int main(int argc, char* argv[]) {
             if (pos == next.size()) { ++idx; return val; }
         } catch (...) {}
         return -1;
+    };
+
+    // ── Helper: consume optional decimal (floating-point) parameter ─────────
+    auto consumeOptionalDecimal = [&](size_t& idx) -> double {
+        if (idx + 1 >= scriptTokens.size()) return -1.0;
+
+        const std::string& next = scriptTokens[idx + 1];
+        try {
+            size_t pos = 0;
+            double val = std::stod(next, &pos);
+            if (pos == next.size()) { ++idx; return val; }
+        } catch (...) {}
+
+        return -1.0;
     };
 
     // ── Helper: flush object-ids list to summary if non-empty ───────────────
@@ -1871,7 +1916,6 @@ int main(int argc, char* argv[]) {
             // for this segment only.
             int val = consumeOptionalInt(tokenIdx);
             int segFrames = (val > 0) ? val : framesPerStep;
-            int captionStart = globalFrame;
             collectingMode = "";
             if (window.size() < 2) {
                 std::string msg = "Error: 'animate' requires two keyframes; only "
@@ -2210,7 +2254,6 @@ int main(int argc, char* argv[]) {
         // ── freeze N ─────
         if (tok == "freeze") {
             flushObjectIds();
-            int captionStart = globalFrame;
             collectingMode = "";
             if (tokenIdx + 1 >= scriptTokens.size()) { ++tokenIdx; continue; }
             int freezeN = 0;
@@ -2486,6 +2529,24 @@ int main(int argc, char* argv[]) {
             ++tokenIdx; continue;
         }
 
+        // ── seconds-delay-caption-next ──────
+        if (tok == "seconds-delay-caption-next") {
+            flushObjectIds();
+            collectingMode = "";
+            double val = consumeOptionalDecimal(tokenIdx);
+            if (val > 0.0) {
+                secondsDelayCaptionNext = val;
+                trace   << "seconds-delay-caption-next: " << secondsDelayCaptionNext << "\n";
+                summary << "seconds-delay-caption-next: " << secondsDelayCaptionNext << "\n";
+            } else {
+                std::cout << "WARNING: seconds-delay-caption-next requires decimal or integer seconds — ignored.\n";
+            }
+            if (indexCaptionLastAtDesiredTimestamp < 0) {
+                nextCaptionFrame = static_cast<int>(captionsFramesPerSecond * secondsDelayCaptionNext);
+            }
+            ++tokenIdx; continue;
+        }
+
         // ── desired-timestamp ───────
         // Accepts a time as decimal seconds (e.g. "3.5") or MM:SS (e.g. "1:30").
         // If animation was faster than needed to reach this desired timestamp,
@@ -2520,7 +2581,7 @@ int main(int argc, char* argv[]) {
 
                 if (desiredSecs >= 0.0) {
                     double desiredInterval = desiredSecs - desiredTimestampLastDesired;
-                    int    actualFrames    = globalFrame - desiredTimestampLastFrame;
+                    int    actualFrames    = globalFrame - frameAtDesiredTimestamp;
                     double desiredFramesD  = desiredInterval * captionsFramesPerSecond;
                     int    frameDiff       = actualFrames - (int)std::round(desiredFramesD);
 
@@ -2535,9 +2596,11 @@ int main(int argc, char* argv[]) {
                     // and caption-words-per-minute, and adjusting their values as suggested
                     // in the summary output file.
                     if (frameDiff < 0) {
-                        globalFrame = desiredTimestampLastFrame + (int)std::round(desiredFramesD);
-                        nextCaptionFrame = globalFrame;
+                        globalFrame = frameAtDesiredTimestamp + (int)std::round(desiredFramesD);
                     }
+
+                    // Save this frame number for possible use in controlling caption timing.
+                    frameAtDesiredTimestamp = globalFrame;
 
                     // Calculate excess seconds.
                     double excessSeconds = frameDiff / (double)captionsFramesPerSecond;
@@ -2579,7 +2642,7 @@ int main(int argc, char* argv[]) {
                     // frames) and captions will end at, or slightly before, the desired timestamp.
                     std::string diffMsg;
                     if (frameDiff > 0) {
-                        diffMsg = std::to_string(frameDiff) + " frames too many ********************";
+                        diffMsg = std::to_string(frameDiff) + " frames too many ********************####################";
                     }
                     else if (frameDiff < 0) {
                         diffMsg = std::to_string(-frameDiff) + " frames too few, skipping to desired frame number ********************";
@@ -2629,7 +2692,7 @@ int main(int argc, char* argv[]) {
                     // }
 
                     wordsSinceDesiredTimeDirective = 0;
-                    desiredTimestampLastFrame = globalFrame;
+                    frameAtDesiredTimestamp = globalFrame;
                     desiredTimestampLastDesired = desiredSecs;
                     ++tokenIdx;  // consume the time token
                 } else {
@@ -2639,9 +2702,14 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
+
+            // If the caption timing is controlled by desired-timestamp directives,
+            // handle the latest accumulated captions.
             if (!captionTimingAnimateFreeze) {
                 consumePendingCaptions((int)tokenIdx);
+                indexCaptionLastAtDesiredTimestamp = captionQueueIndex;
             }
+
             freezeFramesSinceTimestamp = 0;
             ++tokenIdx;
             continue;
