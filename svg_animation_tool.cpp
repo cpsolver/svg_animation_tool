@@ -190,10 +190,17 @@
  *                          sufficient number of freeze frames since the
  *                          previous desired-timestamp directive.
  *
- *     sync-caption         Synchronizes (matches) the beginning of the next
- *                          caption to the frame where one keyframe transitions
- *                          to the next keyframe.
+ *     sync-captions-here   Synchronizes (matches) the beginning of the next
+ *                          caption (and the end of the previous caption) to
+ *                          the current frame number in the animation.  The
+ *                          time delay specified by the seconds-delay-caption-next
+ *                          directive is added to this synchronization point.
  *
+ *     seconds-delay-caption-next   Specifies the time delay that is added
+ *                          when the sync-captions-here directive is used.
+ *                          This time, in decimal seconds, is stored in the
+ *                          secondsDelayCaptionNext variable.
+ * 
  *     Any other token    - If a collecting mode is active (e.g.
  *                          object-ids), added to the active list.
  *                          Otherwise warned and skipped.
@@ -1614,21 +1621,26 @@ void calculateCaptionTiming(int currentTokenIndex)
     // Calculate the number of accumulated captions.  Use the token pointer to
     // identify the current location within the script.
     int numberOfAccumCaptions = 0;
-    while (((globalCaptionQueueIndex + numberOfAccumCaptions) < (int)captionQueue.size()) &&
-           (captionTokenMarker[globalCaptionQueueIndex + numberOfAccumCaptions] <= currentTokenIndex)) {
+    int indexToCaptions = globalCaptionQueueIndex;
+    while (indexToCaptions < (int)captionQueue.size() &&
+           captionTokenMarker[indexToCaptions] <= currentTokenIndex) {
         numberOfAccumCaptions++;
+        indexToCaptions++;
     }
-    if (numberOfAccumCaptions <= 0) return;
+    if (numberOfAccumCaptions <= 0) {
+        return;
+    }
 
     // Get the frame at which the previous caption (in the previous caption sequence) ends.
     // If this is the first caption, assume it ends after the delay specified in
-    // secondsDelayCaptionNext.
+    // secondsDelayCaptionNext.  Use this end frame as the start frame for the next caption.
     int captionStartFrame;
     if (captionEntries.empty()) {
         captionStartFrame = static_cast<int>((captionsFramesPerSecond * secondsDelayCaptionNext) + 0.5);
     } else {
         captionStartFrame = captionEntries.back().endFrame;
     }
+    summary << "  previous caption end frame is " << captionStartFrame << "\n";
 
     // Calculate, then assign, the start and end time for each accumulated caption.
     // The duration of each caption is based on the word count and the words per second
@@ -1637,21 +1649,23 @@ void calculateCaptionTiming(int currentTokenIndex)
     for (int indexOffsetToCurrentCaption = 0;
             indexOffsetToCurrentCaption < numberOfAccumCaptions;
             indexOffsetToCurrentCaption++) {
-        // Point to the next caption, using this global value.
-        globalCaptionQueueIndex++;
         // Calculate the duration of this caption in frames.  Round to the
         // nearest frame rather than truncate.
-        int wordCount = 0;
+        int wordCount = 1;
         if (globalCaptionQueueIndex < (int)captionWordCounts.size()) {
             wordCount = captionWordCounts[globalCaptionQueueIndex];
         }
-        int durationFrames = (int)((wordCount * 60.0 / captionWordsPerMinute)
-                * captionsFramesPerSecond + 0.5);
+        globalWordsSinceDesiredTimeDirective += wordCount;
+        int durationFrames = (int)((captionsFramesPerSecond
+                * (wordCount * 60.0 / captionWordsPerMinute)) + 0.5);
+        summary << "  caption at index " << globalCaptionQueueIndex << " has duration " << durationFrames << "\n";
         // Store this caption and its start and end frames.
         captionEndFrame = captionStartFrame + durationFrames;
         const std::string& rawCaptionText = captionQueue[globalCaptionQueueIndex];
         captionEntries.push_back({captionStartFrame, captionEndFrame, stripBracketedNotes(rawCaptionText), rawCaptionText});
         captionStartFrame = captionEndFrame;
+        // Point to the next caption.
+        globalCaptionQueueIndex++;
     }
 }
 
@@ -1895,7 +1909,7 @@ int main(int argc, char* argv[]) {
             summary    << animHeader;
             trace      << animHeader;
             if (val > 0) {
-                trace << "\n  (frames: " << std::to_string(segFrames) << ")";
+                trace << "  requested frames: " << std::to_string(segFrames) << "\n";
             }
 
             // Phase 3 — detect changes (fills global changes / matrixChanges)
@@ -2164,7 +2178,7 @@ int main(int argc, char* argv[]) {
 
             std::string frameRange = std::to_string(globalFrame - firstFrameNum)
                                    + " frames";
-            trace << frameRange << "\n";
+            trace << "  " << frameRange << "\n";
             summary << "  " << std::to_string(segFrames) << " frames requested\n"
                     << "  " << std::to_string(globalFrame - firstFrameNum)
                     << " frames written, " << std::to_string(firstFrameNum)
@@ -2506,11 +2520,14 @@ int main(int argc, char* argv[]) {
             // at which the sync-caption directive occurs, plus the delay specified in
             // secondsDelayCaptionNext.  The next caption will begin at this same frame.
             if (!captionEntries.empty()) {
-                captionEntries.back().endFrame = globalFrame
+                int previousCaptionEndFrame = globalFrame
                         + static_cast<int>((captionsFramesPerSecond * secondsDelayCaptionNext) + 0.5);
+                captionEntries.back().endFrame = previousCaptionEndFrame;
+                summary << "  previous caption end frame is " << previousCaptionEndFrame << "\n";
             }
             trace   << "sync-captions-here\n";
             summary << "sync-captions-here\n";
+            calculateCaptionTiming(tokenIndex);
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
@@ -2531,6 +2548,8 @@ int main(int argc, char* argv[]) {
         if (tok == "desired-timestamp") {
             flushObjectIds();
             collectingMode = "";
+            trace   << "desired-timestamp\n";
+            summary << "desired-timestamp\n";
             if (tokenIndex + 1 < scriptTokens.size()) {
                 const std::string& tstr = scriptTokens[tokenIndex + 1];
                 double desiredSecs = -1.0;
@@ -2548,10 +2567,10 @@ int main(int argc, char* argv[]) {
                     try { desiredSecs = std::stod(tstr); } catch (...) {}
                 }
 
+                // Handle normal case where desired timestamp is positive number of seconds.
                 if (desiredSecs >= 0.0) {
-                    int globalFrameAtPreviousDesiredTimestamp = globalFrameAtDesiredTimestamp;
-                    int globalFrameAtDesiredTimestamp = (int)std::round(desiredSecs * captionsFramesPerSecond);
-                    int frameDiff = globalFrameAtPreviousDesiredTimestamp - globalFrameAtDesiredTimestamp;
+                    globalFrameAtDesiredTimestamp = (int)std::round(desiredSecs
+                            * captionsFramesPerSecond);
 
                     // If fewer frames than desired, jump ahead to desired frame number.
                     // This jump causes a skip in the generated SVG files to be rendered,
@@ -2563,102 +2582,75 @@ int main(int argc, char* argv[]) {
                     // should be changed by using the directives percent-scale-freeze-time
                     // and caption-words-per-minute, and adjusting their values as suggested
                     // in the summary output file.
+                    int previousGlobalFrame = globalFrame;
+                    int excessFrames = globalFrameAtDesiredTimestamp - previousGlobalFrame;
+                    int framesBetweenDesiredTimestampDirectives = globalFrameAtDesiredTimestamp
+                            - globalFrameAtPreviousDesiredTimestamp;
+                    if (framesBetweenDesiredTimestampDirectives > 0) {
+                        summary << "  frames since previous desired timestamp is "
+                                << framesBetweenDesiredTimestampDirectives << "\n";
+                    } else {
+                        summary << "  no new frames since last desired timestamp\n";
+                    }
+
+                    summary << "  excessFrames = " << globalFrameAtDesiredTimestamp
+                            << " minus " << previousGlobalFrame
+                            << " equals " << excessFrames << "\n";
+
+                    // If desired timestamp is later than current frame, jump ahead
+                    // to the desired frame number.
                     if (globalFrame < globalFrameAtDesiredTimestamp) {
                         globalFrame = globalFrameAtDesiredTimestamp;
+                        summary << "  " << excessFrames << " frames too few ********************\n";
+                        summary << "  jumping ahead to frame number" << globalFrameAtDesiredTimestamp << "\n";
                     }
 
-                    // Calculate excess seconds.
-                    double excessSeconds = (double)frameDiff / (double)captionsFramesPerSecond;
-
-                    // Calculate suggested value for percent-scale-freeze-time.
-                    int suggestedPercentScaleFreezeTime;
-                    if (globalFreezeFramesSinceTimestamp > 1) {
-                        suggestedPercentScaleFreezeTime = (int)((percentScaleFreezeTime
-                                * frameDiff) / globalFreezeFramesSinceTimestamp);
-                    } else {
-                        suggestedPercentScaleFreezeTime = 100;
-                    }
-
-                    // Calculate suggested value for caption-words-per-minute.
-                    int suggestedCaptionWordsPerMinute;
-                    if (captionWordsPerMinute > 1) {
-                        suggestedCaptionWordsPerMinute = (int)((excessSeconds
-                                * captionsFramesPerSecond * 100 ) / (captionWordsPerMinute * 60.0));
-                    } else {
-                        suggestedCaptionWordsPerMinute = 100;
-                    }
-
-                    // Calulate measured caption words per minute.
-                    int measuredWordsPerMinute = 0;
-                    if (frameDiff > 1) {
-                        measuredWordsPerMinute = static_cast<int>(
-                                std::round((globalWordsSinceDesiredTimeDirective * captionsFramesPerSecond * 60.0) /
-                                frameDiff)
-                                );
-                    }
-
-                    // Report difference info and calculations.
+                    int framesTooMany = 0 - excessFrames;
                     // If animation is still in progress at desired timestamp,
                     // write a message showing seconds needed for completion.
                     // Also suggest values for directives caption-words-per-minute
                     // and percent-scale-freeze-time.
-                    // If these values are specified just after the previous suggested-timestamp
-                    // directive, the animations (if they contain a sufficient number of freeze
-                    // frames) and captions will end at, or slightly before, the desired timestamp.
-                    std::string diffMsg;
-                    if (frameDiff > 0) {
-                        diffMsg = std::to_string(frameDiff)
-                                + " frames too many ********************####################";
+                    // If these values are used in the script the animations (if they contain
+                    // a sufficient number of freeze frames) and captions will end at,
+                    // or slightly before, the desired timestamp.
+                    if (framesTooMany > 0) {
+                        summary << "  " << framesTooMany << " frames too many ********************####################\n";
                         std::cout << "WARNING: animation too long at keyframe " << lastSvgBFilename << "\n";
-                    }
-                    else if (frameDiff < 0) {
-                        diffMsg = std::to_string(-frameDiff)
-                                + " frames too few, skipping to desired frame number ********************";
-                    } else {
-                        diffMsg = "frames match desired";
-                    }
-                    summary << "  " << diffMsg << "\n"
-                            << "  animation timing difference:\n  "
-                            << std::fixed << std::setprecision(1)
-                            << excessSeconds;
-                    if (excessSeconds == 0) {
-                        summary << " seconds, matches desired timestamp\n";
-                    } else if (excessSeconds < 0) {
-                        summary << " seconds, too short, freezing for this duration\n";
-                    } else {
-                        summary << " seconds, too long\n"
-                                << "  suggested changes:\n"
-                                << "  percent-scale-freeze-time "
-                                << std::fixed << std::setprecision(1)
-                                << suggestedPercentScaleFreezeTime << "\n"
-                                << "  caption-words-per-minute "
-                                << std::fixed << std::setprecision(1)
-                                << suggestedCaptionWordsPerMinute << "\n";
-                    }
-                    if (frameDiff > 1) {
-                        summary << "  freeze frames since timestamp " << globalFreezeFramesSinceTimestamp
+
+                        // Calculate suggested value for percent-scale-freeze-time.
+                        int suggestedPercentScaleFreezeTime;
+                        if (globalFreezeFramesSinceTimestamp > 1) {
+                            summary << "  freeze frames since timestamp " << globalFreezeFramesSinceTimestamp
                                 << "\n";
-                    } else {
-                        summary << "  no new frames since last desired timestamp\n";
-                    }
-                    if (frameDiff > 1) {
-                        summary << "  measured words per minute " << measuredWordsPerMinute << "\n";
+                            suggestedPercentScaleFreezeTime = (int)((percentScaleFreezeTime
+                                    * framesTooMany) / globalFreezeFramesSinceTimestamp);
+                            summary << "  suggested percent-scale-freeze-time "
+                                    << std::fixed << std::setprecision(1)
+                                    << suggestedPercentScaleFreezeTime << "\n";
+                        }
+
+                        // Calculate suggested value for caption-words-per-minute.
+                        if ((captionWordsPerMinute > 1) && (framesBetweenDesiredTimestampDirectives > 0)) {
+
+                            summary << "  words since last desired-timestamp " << globalWordsSinceDesiredTimeDirective << "\n";
+
+                            int measuredWordsPerMinute = static_cast<int>(
+                                    std::round((globalWordsSinceDesiredTimeDirective
+                                    * captionsFramesPerSecond * 60.0) / framesBetweenDesiredTimestampDirectives));
+                            summary << "  measured words per minute " << measuredWordsPerMinute << "\n";
+                            double secondsTooMany = (double)framesTooMany / (double)captionsFramesPerSecond;
+                            double minutesTooMany = secondsTooMany / 60.0;
+                            double secondsBetweenDesiredTimestampDirectives = (double)framesBetweenDesiredTimestampDirectives
+                                    / (double)captionsFramesPerSecond;
+                            double minutesBetweenDesiredTimestampDirectives = secondsBetweenDesiredTimestampDirectives / 60.0;
+                            double suggestedCaptionWordsPerMinute = (minutesTooMany
+                                    * (double)captionWordsPerMinute * 100.0) / minutesBetweenDesiredTimestampDirectives;
+                            summary << "  suggested caption-words-per-minute "
+                                    << std::fixed << std::setprecision(1)
+                                    << suggestedCaptionWordsPerMinute << "\n";
+                        }
                     }
                     summary << "\n";
-
-                    // // Format cumulative desired time as truncated MM:SS or seconds.
-                    // int dTotalSecs = (int)desiredSecs;
-                    // std::string audioStr;
-                    // if (dTotalSecs >= 60) {
-                    //     int dMins = dTotalSecs / 60;
-                    //     int dSecs = dTotalSecs % 60;
-                    //     std::ostringstream oss;
-                    //     oss << dMins << ":" << std::setw(2) << std::setfill('0') << dSecs;
-                    //     audioStr = oss.str();
-                    // } else {
-                    //     audioStr = std::to_string(dTotalSecs);
-                    // }
-
                     globalWordsSinceDesiredTimeDirective = 0;
                     // Point to the next token to consume the time token.
                     ++tokenIndex;
@@ -2669,8 +2661,8 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
-
             globalFreezeFramesSinceTimestamp = 0;
+            globalFrameAtPreviousDesiredTimestamp = globalFrame;
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
