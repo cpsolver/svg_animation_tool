@@ -1640,7 +1640,6 @@ void calculateCaptionTiming(int currentTokenIndex)
     } else {
         captionStartFrame = captionEntries.back().endFrame;
     }
-    summary << "  previous caption end frame is " << captionStartFrame << "\n";
 
     // Calculate, then assign, the start and end time for each accumulated caption.
     // The duration of each caption is based on the word count and the words per second
@@ -1650,19 +1649,22 @@ void calculateCaptionTiming(int currentTokenIndex)
             indexOffsetToCurrentCaption < numberOfAccumCaptions;
             indexOffsetToCurrentCaption++) {
         // Calculate the duration of this caption in frames.  Round to the
-        // nearest frame rather than truncate.
+        // nearest frame rather than truncate.  Assume one word if the
+        // caption is empty.
         int wordCount = 1;
         if (globalCaptionQueueIndex < (int)captionWordCounts.size()) {
-            wordCount = captionWordCounts[globalCaptionQueueIndex];
+            wordCount = std::max(captionWordCounts[globalCaptionQueueIndex], 1);
         }
         globalWordsSinceDesiredTimeDirective += wordCount;
         int durationFrames = (int)((captionsFramesPerSecond
                 * (wordCount * 60.0 / captionWordsPerMinute)) + 0.5);
-        summary << "  caption at index " << globalCaptionQueueIndex << " has duration " << durationFrames << "\n";
         // Store this caption and its start and end frames.
         captionEndFrame = captionStartFrame + durationFrames;
         const std::string& rawCaptionText = captionQueue[globalCaptionQueueIndex];
-        captionEntries.push_back({captionStartFrame, captionEndFrame, stripBracketedNotes(rawCaptionText), rawCaptionText});
+        std::string strippedCaptionText = stripBracketedNotes(rawCaptionText);
+        captionEntries.push_back({captionStartFrame, captionEndFrame, strippedCaptionText, rawCaptionText});
+        summary << "Caption from " << captionStartFrame << " to " << captionEndFrame << " is: "
+                << strippedCaptionText << "\n";
         captionStartFrame = captionEndFrame;
         // Point to the next caption.
         globalCaptionQueueIndex++;
@@ -2602,7 +2604,7 @@ int main(int argc, char* argv[]) {
                     if (globalFrame < globalFrameAtDesiredTimestamp) {
                         globalFrame = globalFrameAtDesiredTimestamp;
                         summary << "  " << excessFrames << " frames too few ********************\n";
-                        summary << "  jumping ahead to frame number" << globalFrameAtDesiredTimestamp << "\n";
+                        summary << "  jumping ahead to frame number " << globalFrameAtDesiredTimestamp << "\n";
                     }
 
                     int framesTooMany = 0 - excessFrames;
@@ -2726,11 +2728,17 @@ int main(int argc, char* argv[]) {
     calculateCaptionTiming(tokenIndex);
 
    // ── Write captions to VTT file and narration file ──────────────────
+    summary << "\nCaptions and frames:\n";
      for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
         narration << captionSingleEntry.narrationText << "\n\n";
+        summary << "Caption: " << captionSingleEntry.text << "\n"
+                << "  starts at " << captionSingleEntry.startFrame
+                << " (" << frameToVtt(captionSingleEntry.startFrame)
+                << ")  ends at " << captionSingleEntry.endFrame
+                << " (" << frameToVtt(captionSingleEntry.endFrame) << ")\n";
     }
 
     // ── Print settings now that directives are all processed ─────────
