@@ -202,9 +202,9 @@ int main(int argc, char* argv[]) {
     }
 
     //  If only a few caption files, do not handle captions.
-    if (caption_files.empty()) {
+    if (caption_files.size() < 2) {
         global_have_captions = false;
-        trace << "No captions" << std::endl;
+        trace << "Too few captions found" << std::endl;
     } else {
         global_have_captions = true;
         trace << "Captions found" << std::endl;
