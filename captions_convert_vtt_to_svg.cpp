@@ -12,19 +12,21 @@
 #include <string>
 #include <iomanip>
 #include <cctype>
+#include <filesystem>
 
+namespace fs = std::filesystem;
 using namespace std;
-
-ofstream trace;
 
 static const int framesPerSecond = 30;
 
 static const string inputVttFilename = "output_captions_and_timing.vtt";
 static const string inputSvgTemplateFilename = "caption_template.svg";
-static const string templateFileDir = "caption_frames/";
 static const string outFilePrefixSvg = "caption_frame_";
-static const string TRACE_FILE    = "output_trace_captions_to_svg.txt";
+static const string caption_frame_zero_template = "caption_frame_zero_template.svg";
+static const string templateZeroFileDir = "caption_frames_svg/";
+static const string filename_caption_frame_zero = "caption_frame_00000.svg";
 
+const fs::path templateFileDir = "caption_frames_svg/";
 
 static bool parseVttCueTimeRange(const string& line, double& startSeconds) {
     // Expected format (typical):
@@ -76,6 +78,18 @@ int main() {
     string svgOutputContent;
     int captionCount = 0;
 
+    // Copy file caption_frame_zero_template.svg to caption_frames_svg/caption_frame_00000.svg
+    fs::path path_to_caption_zero_template;
+    path_to_caption_zero_template = caption_frame_zero_template;
+    std::ostringstream oss_render_zero_filename;
+    oss_render_zero_filename << filename_caption_frame_zero;
+    fs::path output_render_zero_path = templateFileDir / oss_render_zero_filename.str();
+    fs::copy_file(
+        path_to_caption_zero_template,
+        output_render_zero_path,
+        std::filesystem::copy_options::overwrite_existing
+    );
+
     // Open VTT input file
     ifstream vttInputFile(inputVttFilename);
     if (!vttInputFile.is_open()) {
@@ -90,11 +104,6 @@ int main() {
         return 1;
     }
 
-    trace.open(TRACE_FILE);
-    if (!trace) {
-        cerr << "Failed to open output trace file: " << TRACE_FILE << "\n";
-        return 1;
-    }
     // Read entire template (then split around the first '>' and first '<' after it)
     // (This matches the intent of your pseudocode that searches for the line containing </text>.)
     string templateContent((istreambuf_iterator<char>(templateInputFile)), istreambuf_iterator<char>());
@@ -145,7 +154,6 @@ int main() {
         int frameNumber = static_cast<int>(startSeconds * framesPerSecond);
         if (frameNumber < 0) frameNumber = 0;
         frameNumberStart = formatFrameNumber5(frameNumber);
-        trace << "frame start: " << frameNumberStart << "\n\n";
 
         // Get next vttInputLine into outputCaptionText
         outputCaptionText.clear();
@@ -159,7 +167,6 @@ int main() {
             if (!outputCaptionText.empty()) outputCaptionText += "\n";
             outputCaptionText += vttInputLine;
         }
-        trace << outputCaptionText << "\n\n";
 
         // If caption text is empty, just continue (do not write an overlay)
         if (outputCaptionText.empty()) {
@@ -171,7 +178,8 @@ int main() {
         svgOutputContent = templateLinesBeforeCaption + outputCaptionText + templateLinesAfterCaption;
 
         // Write SVG output file
-        string outFilename = templateFileDir + outFilePrefixSvg + frameNumberStart + ".svg";
+        fs::path outFilenamePath = templateFileDir / (outFilePrefixSvg + frameNumberStart + ".svg");
+        std::string outFilename = outFilenamePath.string();
         ofstream outFile(outFilename);
         if (!outFile.is_open()) {
             cerr << "Failed to write SVG file: " << outFilename << "\n";
