@@ -49,46 +49,45 @@
  *   Tokens are whitespace-separated (spaces, tabs, newlines).
  *   There is no comment syntax — use text blocks (see below) instead.
  *
- *   Keyframe tokens:
+ *   Main directives and tokens:
  *
  *     someFile.svg   - Register a keyframe SVG. Pushed into a sliding
  *                      window of "last two seen". If a previously seen
  *                      SVG is bumped out without being used in an
  *                      'animate', a warning is printed.
  *
- *     animate        - Interpolate between the two most recently seen
+ *     animate N      - Interpolate between the two most recently seen
  *                      SVG files, emitting framesPerStep output frames
  *                      with smootherstep easing. Requires at least two
  *                      SVG files. Consecutive 'animate' calls share their
  *                      boundary frame (last frame of segment N == first
- *                      frame of segment N+1).
+ *                      frame of segment N+1).  The optional N integer
+ *                      specifies the number of frames for the animation,
+ *                      not counting added frames that occur when there
+ *                      is a stagger delay for multiple moving objects.
  *
  *     freeze N       - Emit N identical copies of the most recently seen
  *                      keyframe. N must be a positive integer.
  *
- *   Text block tokens:
+ *     frames-per-step N  - Default frames per animate segment if not
+ *                      specified with the "animate" directive.  If not
+ *                      specified, the default is 30.  Must be a
+ *                      positive integer.
  *
- *     prefix-begin   - Opens a named text block. 'prefix' may contain
- *                      letters, digits, and hyphens. Everything after
- *                      this token is collected as raw text until a
- *                      standalone sequence of 3 or more dashes (----)
- *                      is found. The text is normalized (newlines to
- *                      spaces, multiple spaces collapsed, trimmed) and
- *                      accumulated under the prefix name. Multiple
- *                      blocks with the same prefix are concatenated
- *                      with a single space. Examples:
- *                        vocal-begin, comment-begin, animate-begin,
- *                        title-begin (used as the header of the narration
- *                        output file output_narration.txt)
- *                      All text blocks are written to the trace file.
- *                      Script directives inside a block are treated as
- *                      plain text and are not executed.
+ *     output-directory D - Directory for output frames.  The default is
+ *                      "frames_svg".  Must not contain a period.
  *
- *   Object and motion directives:
+ *   Special object motion directives:
  *
  *     object-ids     - Begins collecting a list of SVG element ids.
  *                      Subsequent unrecognized tokens are appended to
  *                      the list until another directive is seen.
+ *
+ *     any other token - If object IDs are being collected by the
+ *                      object-ids directive, these unrecognized tokens
+ *                      are added to the active list.  If object IDs
+ *                      are not being collected, a warning is given,
+ *                      and these tokens are ignored.
  *
  *     spread-out [N] - Stagger start/end times of the most recent
  *                      object-ids by N frames per object (default 1).
@@ -131,79 +130,112 @@
  *                      written to trace/summary (ambiguous which to use).
  *
  *     arc-degrees [N] - Set the ellipse trim angle for arc-height
- *                       (default 20). Larger values give a flatter
- *                       peak. Does not by itself apply an arc.
+ *                      (default 20). Larger values give a flatter
+ *                      peak. Does not by itself apply an arc.
  *
- *   Settings directives:
+ *   Text block tokens:
  *
- *     frames-per-step N  - Default frames per animate segment if not specified.
- *                          If not specified, default is 30.
- *                          Must be a positive integer.
+ *     prefix-begin   - Opens a named text block. 'prefix' may contain
+ *                      letters, digits, and hyphens. Everything after
+ *                      this token is collected as raw text until a
+ *                      standalone sequence of 3 or more dashes (----)
+ *                      is found. The text is normalized (newlines to
+ *                      spaces, multiple spaces collapsed, trimmed) and
+ *                      accumulated under the prefix name. Multiple
+ *                      blocks with the same prefix are concatenated
+ *                      with a single space. Examples:
+ *                        vocal-begin, comment-begin, animate-begin,
+ *                        title-begin (used as the header of the narration
+ *                        output file output_narration.txt)
+ *                      All text blocks are written to the trace file.
+ *                      Script directives inside a block are treated as
+ *                      plain text and are not executed.
  *
+ *   Testing directives:
+ *
+ *     skip-mode-on   - Testing aid for quickly previewing long scripts.
+ *                      While active, all calculations run in full for
+ *                      every frame (detectChanges, spread-out, arc,
+ *                      generateFrame) so the trace file shows complete
+ *                      information, but SVG files are only written for
+ *                      three frames per animate segment (the first frame,
+ *                      the frame nearest 1/3 through, and the frame
+ *                      nearest 2/3 through), and only one frame per
+ *                      freeze segment (the first). globalFrame still
+ *                      counts all frames, so output frame numbers have
+ *                      gaps but remain globally consistent.
+ *
+ *     skip-mode-off      - Turns off skip-mode-on.  Subsequent animate and
+ *                      freeze segments write all frames normally. The
+ *                      two directives can be used in pairs to selectively
+ *                      skip some segments while fully rendering others.
+ *
+ *     full-skip-mode-on -  Testing aid that does not write any SVG files,
+ *                      but does all calculations, and writes summary
+ *                      output information and writes VTT caption file.
+ *                      This mode is useful to check timing and debug
+ *                      animations based on viewing output files other than
+ *                      SVG/PNG images.
+ *
+ *     full-skip-mode-off - Turns off full-skip-mode-on.  Turning full skip
+ *                      mode on and off can be used to generate SVG files
+ *                      for limited portions of a long video.
+ * 
+ *   Caption-related directives:
+ *
+ *     caption-being  - A special text block used to specify captions.
+ *                      This text is collected the same as other
+ *                      prefix-begin directives, but get special handling
+ *                      for use as captions, either closed captions or
+ *                      captions shown at the bottom of each image.
+ * 
  *     captions-frames-per-second N - Frames per second for caption timing
- *                          calculations.  If not specified, default is 30.
+ *                      calculations.  If not specified, default is 30.
  *
- *     output-directory D - Directory for output frames (default
- *                          "frames_svg"). Must not contain a period.
- *
- *     skip-mode-on       - Testing aid for quickly previewing long scripts.
- *                          While active, all calculations run in full for
- *                          every frame (detectChanges, spread-out, arc,
- *                          generateFrame) so the trace file shows complete
- *                          information, but SVG files are only written for
- *                          three frames per animate segment (the first frame,
- *                          the frame nearest 1/3 through, and the frame
- *                          nearest 2/3 through), and only one frame per
- *                          freeze segment (the first). globalFrame still
- *                          counts all frames, so output frame numbers have
- *                          gaps but remain globally consistent.
- *
- *     skip-mode-off      - Turns off skip-mode-on; subsequent animate and
- *                          freeze segments write all frames normally. The
- *                          two directives can be used in pairs to selectively
- *                          skip some segments while fully rendering others.
- *
- *     caption-words-per-minute - Specifies the rate at which captions are
- *                          updated, based on the number of words in the
- *                          captions.
- *
- *     desired-timestamp T - Reports difference between actual elapsed time
- *                          and a desired cumulative timestamp T.  Also, if
- *                          possible, freezes current frame until that time
- *                          has been reached.  If the desired time has already
- *                          passed, the report includes suggested values for
- *                          caption words per minute and percent scale freeze
- *                          time that will extend the captions and animations
- *                          to just reach the desired timestamp.
- *                          Timestamp T may be decimal seconds
- *                          (e.g. "3.5") or MM:SS (e.g. "1:30"). Reported
- *                          difference appears in stdout, in the trace file,
- *                          and in the sequence section of the summary file.
- *
- *     percent-scale-freeze-time N - A scale factor, expressed as a percent,
- *                          scales (adjusts) the freeze times.  A value of 100
- *                          means 100 percent, which specifies no change. When
- *                          a desired-timestamp value occurs before the prior
- *                          animation is done, changing this value as suggested
- *                          in the summary info causes the animation to just
- *                          reach the desired timestamp, provided there are a
- *                          sufficient number of freeze frames since the
- *                          previous desired-timestamp directive.
+ *     caption-words-per-minute - Specifies the rate at which captions change
+ *                      to the next caption, based on the number of words in
+ *                      the captions.
  *
  *     sync-captions-here   Synchronizes (matches) the beginning of the next
- *                          caption (and the end of the previous caption) to
- *                          the current frame number in the animation.  The
- *                          time delay specified by the seconds-delay-caption-next
- *                          directive is added to this synchronization point.
+ *                      caption (and the end of the previous caption) to
+ *                      the current frame number in the animation.  The
+ *                      time delay specified by the seconds-delay-caption-next
+ *                      directive is added to this synchronization point.
  *
  *     seconds-delay-caption-next   Specifies the time delay that is added
- *                          when the sync-captions-here directive is used.
- *                          This time, in decimal seconds, is stored in the
- *                          secondsDelayCaptionNext variable.
+ *                      when the sync-captions-here directive is used.
+ *                      This time, in decimal seconds, is stored in the
+ *                      secondsDelayCaptionNext variable.
  * 
- *     Any other token    - If a collecting mode is active (e.g.
- *                          object-ids), added to the active list.
- *                          Otherwise warned and skipped.
+ *   Animation timing directives:
+ * 
+ *     desired-timestamp T - Specifies a desired time at that place in the
+ *                      script.  The timestamp T may be decimal seconds
+ *                      (e.g. "3.5") or MM:SS (e.g. "1:30").  This
+ *                      directive is designed to match animation timing
+ *                      to the timing of an audio track.
+ *                      If the desired time has already passed, or there
+ *                      are not enough freeze frames during that part of
+ *                      the animation, the name of the most recent
+ *                      keyframe SVG file is reported in the output.
+ *                      Otherwise the file output_freeze_scale_percents.txt
+ *                      is written with calculated values that attempt to
+ *                      delay or shorten freeze frames to achieve the
+ *                      desired timestamp.
+ * 
+ *     percent-scale-freeze-time N - A scale factor, expressed as a percent,
+ *                      scales (adjusts) the freeze times.  A value of 100
+ *                      means 100 percent, which specifies no change. Normally
+ *                      suggested values are calculated automatically and
+ *                      supplied during the next run of this program.  If a
+ *                      sufficient number of freeze frames are involved in
+ *                      an animation sequence, these automatically supplied
+ *                      values cause the desired-timestamp directives to
+ *                      control the timing to reach the desired values.
+ *                      These automatically calculated values can be
+ *                      ignored by deleting or renaming the output file
+ *                      named output_freeze_scale_percents.txt.
+ * 
  *
  * -- Output files ------------------------------------------------
  *
@@ -213,11 +245,18 @@
  *                                values, change detection detail
  *   output_summary_animate.txt - concise run summary: settings, per-segment
  *                                change counts, animated id list
+ *   output_freeze_scale_percents.txt - Automatically generated values that
+ *                                override the percent-scale-freeze-time
+ *                                directives.
  *
  *   Frames are written as: <outputDir>/frame_NNNN.svg
- *   The frame counter is global across all animate/freeze operations.
+ *
+ *   The frame counter is global across all animate/freeze operations,
+ *   but frame numbers are skipped when nothing is being animated.
+ *   For this reason it is IMPORTANT to delete SVG files from the output
+ *   directory before running this program.
+ *
  *   Trace and summary files are overwritten on each run.
- *   Easing is always smootherstep and is not configurable.
  *
  * -- Converting frames to video ------------------------------------------------
  *
