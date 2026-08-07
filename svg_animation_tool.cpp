@@ -51,7 +51,15 @@
  *
  *   Main directives and tokens:
  *
- *     someFile.svg   - Register a keyframe SVG. Pushed into a sliding
+ *     someFile.svg   - Name of the next keyframe SVG file.  When this
+ *                      filename is followed by the "animate" directive,
+ *                      the differences between this file and the previous
+ *                      SVG file are identified automatically, and
+ *                      intermediate SVG files are generated to create
+ *                      animation between the two keyframes.  The
+ *                      generated SVG files must be
+ *                      converted -- "rendered" -- to PNG files.  Those
+ *                      PNG files must be converted to video.
  *                      window of "last two seen". If a previously seen
  *                      SVG is bumped out without being used in an
  *                      'animate', a warning is printed.
@@ -66,8 +74,14 @@
  *                      not counting added frames that occur when there
  *                      is a stagger delay for multiple moving objects.
  *
- *     freeze N       - Emit N identical copies of the most recently seen
- *                      keyframe. N must be a positive integer.
+ *     freeze N       - Effectively create N identical copies of the most
+ *                      recently seen keyframe. N must be a positive integer.
+ *                      Rather than duplicate the same SVG file, the
+ *                      frame number of the next SVG file skips over the
+ *                      frames that are identical.  This convention
+ *                      is handled in the render_svg_files_to_png.cpp
+ *                      program by generating the required number of 
+ *                      identical PNG files.
  *
  *     frames-per-step N  - Default frames per animate segment if not
  *                      specified with the "animate" directive.  If not
@@ -218,23 +232,19 @@
  *                      are not enough freeze frames during that part of
  *                      the animation, the name of the most recent
  *                      keyframe SVG file is reported in the output.
- *                      Otherwise the file output_freeze_scale_percents.txt
+ *                      Otherwise the file output_percent_scale_duration.txt
  *                      is written with calculated values that attempt to
  *                      delay or shorten freeze frames to achieve the
  *                      desired timestamp.
  * 
- *     percent-scale-freeze-time N - A scale factor, expressed as a percent,
- *                      scales (adjusts) the freeze times.  A value of 100
- *                      means 100 percent, which specifies no change. Normally
- *                      suggested values are calculated automatically and
- *                      supplied during the next run of this program.  If a
- *                      sufficient number of freeze frames are involved in
- *                      an animation sequence, these automatically supplied
- *                      values cause the desired-timestamp directives to
- *                      control the timing to reach the desired values.
- *                      These automatically calculated values can be
- *                      ignored by deleting or renaming the output file
- *                      named output_freeze_scale_percents.txt.
+ *     percent-scale-animation-duration N - A scale factor, expressed as a
+ *                      percent, scales (adjusts) the animation duration
+ *                      during both freeze and animation actions.  A value of
+ *                      100 means 100 percent, which specifies no change.
+ *                      Ideally the suggested values cause the
+ *                      desired-timestamp directives to increase or
+ *                      decrease the timing so the desired timestamps
+ *                      are reached.
  * 
  *
  * -- Output files ------------------------------------------------
@@ -245,9 +255,10 @@
  *                                values, change detection detail
  *   output_summary_animate.txt - concise run summary: settings, per-segment
  *                                change counts, animated id list
- *   output_freeze_scale_percents.txt - Automatically generated values that
- *                                override the percent-scale-freeze-time
- *                                directives.
+ *   output_percent_scale_duration.txt - Automatically generated values that
+ *                                override the percent-scale-animation-duration
+ *                                directives.  File can be deleted or renamed
+ *                                to ignore these adjustments.
  *
  *   Frames are written as: <outputDir>/frame_NNNN.svg
  *
@@ -316,6 +327,7 @@ std::ofstream trace;
 std::ofstream summary;
 std::ofstream captions;
 std::ofstream narration;
+std::ofstream percentScaleDurationFile;
 
 // Accumulated per-segment info written to the summary file at the end.
 std::string sequenceInfo;
@@ -340,7 +352,7 @@ int captionWordsPerMinute = 130;
 double secondsDelayCaptionNext = 0.8;
 
 // Scale factor for freeze frames, in percent "units",
-// can be changed by percent-scale-freeze-time directive.
+// can be changed by percent-scale-animation-duration directive.
 int percentScaleFreezeTime = 100;
 
 // Toggled by full-skip-mode-on and full-skip-mode-off directives.
@@ -363,7 +375,7 @@ int globalFrame = 0;
 // Info at the previous desired-timestamp directive.
 int globalFrameAtPreviousDesiredTimestamp = 0;
 int globalFrameAtDesiredTimestamp = 0;
-int globalFreezeFramesSinceTimestamp = 0;
+int globalScalableFramesSinceTimestamp = 0;
 
 // Count the words across multiple accumulated captions.
 int globalWordsSinceDesiredTimeDirective = 0;
@@ -384,8 +396,8 @@ std::vector<CaptionEntry> captionEntries;
 std::vector<int> captionWordCounts;
 
 // Freeze frame percent integers.
-std::vector<int> globalFreezeFramePercentStartFrame;
-std::vector<int> globalFreezeFramePercent;
+std::vector<int> globalFreezeAnimateScalePercentStartFrame;
+std::vector<int> globalFreezeAnimateScalePercent;
 
 
 // ------------------------------------------------
@@ -1726,7 +1738,7 @@ int main(int argc, char* argv[]) {
     const std::string CAPTIONS_FILE = "output_captions_and_timing.vtt";
     const std::string NARRATION_FILE   = "output_narration.txt";
     const std::string AUDIO_LIST_FILE  = "output_audio_narration_file_list.txt";
-    const std::string FREEZE_SCALE_FILE  = "output_freeze_scale_percents.txt";
+    const std::string PERCENT_SCALE_DURATION  = "output_percent_scale_duration.txt";
 
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <script.txt>\n"
@@ -1788,12 +1800,10 @@ int main(int argc, char* argv[]) {
             narration << "\n";
     }
 
-    fs::path filePath = fs::path(FREEZE_SCALE_FILE);
-    std::ofstream freezeScaleFile;
-    freezeScaleFile.open(filePath.string());
-    if (!freezeScaleFile) {
-        std::cout << "Cannot open for input this freeze scale file: " << FREEZE_SCALE_FILE << "\n";
-        // No error if not available.
+    percentScaleDurationFile.open(PERCENT_SCALE_DURATION);
+    if (!percentScaleDurationFile) {
+        std::cerr << "Error: cannot open percent scale duration file: " << PERCENT_SCALE_DURATION << "\n";
+        return 1;
     }
 
     // ── Settings header — stdout and summary ───────────────
@@ -1875,28 +1885,6 @@ int main(int argc, char* argv[]) {
         objectIds.clear();   // prevent re-printing on next flush
     };
 
-    // If available, read the file named output_freeze_scale_percents, and
-    // get the integer numbers in that file.  Then close the file, and
-    // open for output a new file with the same name.
-    std::string filename = FREEZE_SCALE_FILE;
-    std::vector<std::string> freezePercentLines = readLines(filename);
-    globalFreezeFramePercentStartFrame.clear();
-    globalFreezeFramePercent.clear();
-    for (const auto& line : freezePercentLines) {
-        std::istringstream iss(line);
-        int startFrame = 0;
-        int percent = 0;
-        if (iss >> startFrame >> percent) {
-            globalFreezeFramePercentStartFrame.push_back(startFrame);
-            globalFreezeFramePercent.push_back(percent);
-        }
-    }
-    filePath = fs::path(FREEZE_SCALE_FILE);
-    freezeScaleFile.open(filePath.string());
-    if (!freezeScaleFile) {
-        std::cout << "Cannot open for output this freeze scale file: " << FREEZE_SCALE_FILE << "\n";
-    }
-
     // ── Process tokens ────
     size_t tokenIndex;
     for (tokenIndex = 0; tokenIndex < scriptTokens.size(); ) {
@@ -1965,7 +1953,14 @@ int main(int argc, char* argv[]) {
             // Optional integer after 'animate' overrides framesPerStep
             // for this segment only.
             int val = consumeOptionalInt(tokenIndex);
-            int segFrames = (val > 0) ? val : framesPerStep;
+            int segFrames = 0;
+            if (val > 0) {
+                segFrames = val;
+            } else {
+                segFrames = framesPerStep;
+            }
+            globalScalableFramesSinceTimestamp += segFrames;
+
             collectingMode = "";
             if (window.size() < 2) {
                 std::string msg = "Error: 'animate' requires two keyframes; only "
@@ -2303,9 +2298,9 @@ int main(int argc, char* argv[]) {
             if (tokenIndex + 1 >= scriptTokens.size()) { ++tokenIndex; continue; }
             int freezeN = 0;
             try { freezeN = std::stoi(scriptTokens[tokenIndex + 1]); } catch (...) { ++tokenIndex; continue; }
-            //  Scale freeze duration using percent value from percent-scale-freeze-time directive.
+            //  Scale freeze duration using percent value from percent-scale-animation-duration directive.
             freezeN = (int)((freezeN * percentScaleFreezeTime ) / 100.0);
-            globalFreezeFramesSinceTimestamp += freezeN;
+            globalScalableFramesSinceTimestamp += freezeN;
             if (freezeN <= 0) { tokenIndex += 2; continue; }
             if (window.empty()) {
                 std::string msg = "Error: 'freeze' requires a keyframe but none is loaded. Skipping.";
@@ -2335,17 +2330,17 @@ int main(int argc, char* argv[]) {
             tokenIndex += 2; continue;
         }
 
-        // ── percent-scale-freeze-time ──────
-        if (tok == "percent-scale-freeze-time") {
+        // ── percent-scale-animation-duration ──────
+        if (tok == "percent-scale-animation-duration") {
             flushObjectIds();
             collectingMode = "";
             int val = consumeOptionalInt(tokenIndex);
             if (val > 0) {
                 percentScaleFreezeTime = val;
-                trace   << "percent-scale-freeze-time: " << percentScaleFreezeTime << "\n";
-                summary << "percent-scale-freeze-time: " << percentScaleFreezeTime << "\n";
+                trace   << "percent-scale-animation-duration: " << percentScaleFreezeTime << "\n";
+                summary << "percent-scale-animation-duration: " << percentScaleFreezeTime << "\n";
             } else {
-                std::cout << "WARNING: percent-scale-freeze-time requires a positive integer — ignored.\n";
+                std::cout << "WARNING: percent-scale-animation-duration requires a positive integer — ignored.\n";
             }
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
@@ -2619,7 +2614,7 @@ int main(int argc, char* argv[]) {
         // already been exceeded and this fact is reported.
         // Calculations are done to suggest specific numbers that can be used
         // in the script with the directives caption-words-per-minute
-        // and percent-scale-freeze-time.  These suggested values should cause
+        // and percent-scale-animation-duration.  These suggested values should cause
         // the desired timestamp to be reached at the desired animation points
         // and caption points.
         if (tok == "desired-timestamp") {
@@ -2652,12 +2647,16 @@ int main(int argc, char* argv[]) {
 
                     // Calculate the number of frames too many, or too few, compared to the
                     // frame number at the desired timestamp.
-                    int previousGlobalFrame = globalFrame;
-                    int excessFrames = globalFrameAtDesiredTimestamp - previousGlobalFrame;
-                    int framesTooMany = 0 - excessFrames;
-                    summary << "  excessFrames = " << globalFrameAtDesiredTimestamp
-                            << " minus " << previousGlobalFrame
-                            << " equals " << excessFrames << "\n";
+                    int framesTooMany = 0;
+                    int framesTooFew = 0;
+                    if ((globalFrameAtDesiredTimestamp - globalFrame) > 0) {
+                    	framesTooMany = globalFrameAtDesiredTimestamp - globalFrame;
+                    } else if ((globalFrame - globalFrameAtDesiredTimestamp) > 0) {
+                        framesTooFew = globalFrame - globalFrameAtDesiredTimestamp;
+                    }
+                    summary << "  globalFrameAtDesiredTimestamp = " << globalFrameAtDesiredTimestamp
+                            << "   framesTooMany = " << framesTooMany
+                            << "   framesTooFew to " << framesTooFew << "\n";
 
                     // If the desired timestamp is later than the current frame,
                     // jump ahead to the desired frame number.
@@ -2667,9 +2666,9 @@ int main(int argc, char* argv[]) {
                     // generated SVG frame.
                     if (globalFrame < globalFrameAtDesiredTimestamp) {
                         globalFrame = globalFrameAtDesiredTimestamp;
-                        summary << "  " << excessFrames << " frames too few ********************\n";
+                        summary << "  " << framesTooFew << " frames too few ********************\n";
                         summary << "  jumping ahead to frame number " << globalFrameAtDesiredTimestamp << "\n";
-                    } else if (framesTooMany > 0) {
+                    } else if (framesTooFew > 0) {
                         summary << "  " << framesTooMany << " frames too many ********************####################\n";
                         std::cout << "WARNING: animation too long at keyframe " << lastSvgBFilename << "\n";
                     }
@@ -2677,40 +2676,43 @@ int main(int argc, char* argv[]) {
                     // If the animation is still in progress at the desired timestamp,
                     // or has not yet reached the desired timestamp, write one line to
                     // a special file that specifies a percent adjustment to the lengths
-                    // of freeze frames since the previous desired-timestamp directive.
-                    // If those numbers are used the next time animation is generated,
-                    // freeze frames will be adjusted so the desired timestamp is reached
-                    // automatically.  If this adjustment is not wanted, delete or rename
-                    // the special file.
+                    // of freeze and animate frames since the previous desired-timestamp
+                    // directive.   If those numbers are used the next time animation is
+                    // generated, freeze frames and animate frame durations will be
+                    // adjusted so the desired timestamp is reached.  If this adjustment
+                    // is not wanted, delete or rename the special file.
 
-                    // Calculate a value for scaling freeze frame durations, and write
-                    // those values to a separate file.
-                    int framesBetweenDesiredTimestampDirectives = globalFrameAtDesiredTimestamp
-                            - globalFrameAtPreviousDesiredTimestamp;
-                    int suggestedPercentScaleFreezeDuration;
-                    if (globalFreezeFramesSinceTimestamp != 0) {
-                        summary << "  freeze frames since timestamp " << globalFreezeFramesSinceTimestamp
-                            << "\n";
-                        suggestedPercentScaleFreezeDuration = (int)((percentScaleFreezeTime
-                                * framesTooMany) / globalFreezeFramesSinceTimestamp);
-                    } else {
-                        suggestedPercentScaleFreezeDuration = 100;
+                    // Calculate a value for scaling freeze frame and animate durations,
+                    // and write those values to a separate file.
+                    int suggestedPercentScaleFreezeAnimateDuration = 100;
+                    if (framesTooFew > 0) {
+                        suggestedPercentScaleFreezeAnimateDuration =
+                                (int)(percentScaleFreezeTime + (framesTooFew
+                                / globalScalableFramesSinceTimestamp));
+                    } else if (framesTooMany > 0) {
+                        suggestedPercentScaleFreezeAnimateDuration =
+                                (int)(percentScaleFreezeTime - (framesTooMany
+                                / globalScalableFramesSinceTimestamp));
                     }
-                    summary << "  suggested percent-scale-freeze-time "
-                            << suggestedPercentScaleFreezeDuration << "\n";
-                    freezeScaleFile << globalFrameAtPreviousDesiredTimestamp
-                            << " " << suggestedPercentScaleFreezeDuration << "\n";
-
+                    summary << "  scalable frames since timestamp " << globalScalableFramesSinceTimestamp
+                            << "\n";
+                    summary << "  suggested percent-scale-animation-duration "
+                            << suggestedPercentScaleFreezeAnimateDuration << "\n";
+                    percentScaleDurationFile << lastSvgBFilename
+                            << "\n  percent-scale-animation-duration "
+                            << suggestedPercentScaleFreezeAnimateDuration << "\n\n";
                     // Calculate a suggested value for caption-words-per-minute.
                     // If this suggested value is used next time, each caption word will
                     // get the same amount of screen time as each other caption word.
+                    int framesBetweenDesiredTimestampDirectives = globalFrameAtDesiredTimestamp
+                            - globalFrameAtPreviousDesiredTimestamp;
                     if ((captionWordsPerMinute > 1) && (framesBetweenDesiredTimestampDirectives > 0)) {
                         summary << "  words since last desired-timestamp " << globalWordsSinceDesiredTimeDirective << "\n";
                         int measuredWordsPerMinute = static_cast<int>(
                                 std::round((globalWordsSinceDesiredTimeDirective
                                 * captionsFramesPerSecond * 60.0) / framesBetweenDesiredTimestampDirectives));
                         summary << "  measured words per minute " << measuredWordsPerMinute << "\n";
-                        double secondsTooMany = (double)framesTooMany / (double)captionsFramesPerSecond;
+                        double secondsTooMany = (double)framesTooFew / (double)captionsFramesPerSecond;
                         double minutesTooMany = secondsTooMany / 60.0;
                         double secondsBetweenDesiredTimestampDirectives = (double)framesBetweenDesiredTimestampDirectives
                                 / (double)captionsFramesPerSecond;
@@ -2733,7 +2735,7 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
-            globalFreezeFramesSinceTimestamp = 0;
+            globalScalableFramesSinceTimestamp = 0;
             globalFrameAtPreviousDesiredTimestamp = globalFrame;
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
@@ -2816,7 +2818,7 @@ int main(int argc, char* argv[]) {
             << "Trace file : " << TRACE_FILE << "\n\n";
     summary << "Captions file : " << CAPTIONS_FILE << "\n";
     summary << "Narration file : " << NARRATION_FILE << "\n";
-    summary << "Freeze scale adjustments (both input and output) : " << FREEZE_SCALE_FILE << "\n";
+    summary << "Freeze scale adjustments (both input and output) : " << PERCENT_SCALE_DURATION << "\n";
 
     // ── Final ────────
     std::string doneMsg = "Done!  " + std::to_string(globalFrame)
