@@ -52,7 +52,9 @@
 const int global_input_frame_rate = 30;
 const int global_output_frame_rate = 3;
 bool global_use_low_resolution = false;
-bool global_have_captions = true;
+bool global_have_png_frames_without_captions = false;
+bool global_have_captions = false;
+bool global_need_cooldown = false;
 
 namespace fs = std::filesystem;
 
@@ -63,7 +65,7 @@ std::ofstream trace{fs::path{"output_trace_render.txt"}, std::ios::out | std::io
 
 constexpr size_t INVALID_FRAME = static_cast<size_t>(-1);
 const fs::path INPUT_ANIMATION_DIR = "frames_svg";
-const fs::path INPUT_CAPTION_DIR = "caption_frames";
+const fs::path INPUT_CAPTION_DIR = "caption_frames_svg";
 const fs::path OUTPUT_ANIMATION_DIR = "frames_png";
 const fs::path OUTPUT_WITH_CAPTIONS_DIR = "frames_with_captions_png";
 
@@ -91,6 +93,22 @@ static size_t rendered_caption_frame_number;
 static size_t previous_rendered_animation_frame_number = static_cast<size_t>(-1);
 static size_t previous_rendered_caption_frame_number = static_cast<size_t>(-1);
 
+
+//--------------------------------------------------
+//  Ensure an output directory exists.
+void ensure_exists_output_directory(const fs::path& dir) {
+
+    //  If need to delete files.
+    // if (fs::exists(dir)) {
+    //     for (const auto& file_entry : fs::directory_iterator(dir)) {
+    //         if (file_entry.is_regular_file() && file_entry.path().extension() == ".png") {
+    //             fs::remove(file_entry.path());
+    //         }
+    //     }
+    // }
+
+    fs::create_directories(dir);
+}
 
 //--------------------------------------------------
 
@@ -121,12 +139,6 @@ void get_and_sort_animation_and_caption_filenames() {
 
 //  Render one file by converting it from SVG to PNG.
 bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::path& output_png_file_path) {
-
-
-// TODO: test ...
-    return true;
-
-
     pid_t pid = fork();
     if (pid < 0) {
         trace << "ERROR: fork() failed before running Inkscape or ffmpeg/convert on "
@@ -141,7 +153,7 @@ bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::pat
             std::string export_arg = "--export-filename=" + output_png_file_path.string();
             execlp("inkscape", "inkscape", input_animation_file_path.c_str(), "--export-type=png",
                    export_arg.c_str(), static_cast<char*>(nullptr));
-            //  Write period to screen as progress indicator.
+            global_need_cooldown = true;
         } else {
             //  At low resolution, use ffmpeg's "convert" utility.
             execlp("convert", "convert", "-density", "12", "-resize", "256x256", "-strip",
@@ -153,11 +165,27 @@ bool convert_svg_to_png(const fs::path& input_animation_file_path, const fs::pat
     }
     //  If doing Inkscape rendering, display a progress indication.
     if (!global_use_low_resolution) {
-        int percent_progress = static_cast<int>((output_frame_number * 100) / number_of_output_frames);
-        if (percent_progress > 100) {
-            percent_progress = 100;
-        }
-        if (percent_progress != previous_percent_progress) {
+        int percent_progress = static_cast<int>((static_cast<long long>(output_frame_number)
+                * 100) / number_of_output_frames);
+        if (percent_progress == 0) {
+            static long long next_threshold = 1;
+            static double factor = 1.5;
+            long long frames_in_first_percent = number_of_output_frames / 100;
+            if (frames_in_first_percent < 1) {
+                frames_in_first_percent = 1;
+            }
+            if (output_frame_number >= next_threshold) {
+                std::cout << "." << std::flush;
+                long long new_threshold = static_cast<long long>(next_threshold * factor);
+                if (new_threshold > next_threshold) {
+                    next_threshold = new_threshold;
+                    next_threshold = next_threshold + 1;
+                }
+                if (next_threshold > frames_in_first_percent) {
+                    next_threshold = frames_in_first_percent + 1;
+                }
+            }
+        } else if (percent_progress != previous_percent_progress) {
             std::cout << percent_progress << " " << std::flush;
             previous_percent_progress = percent_progress;
         }
@@ -219,10 +247,6 @@ size_t get_nearest_frame(size_t idealized_input_frame_number,
 //  Use ImageMagick to combine (merge) an already rendered animation frame with
 //  an already rendered caption frame.
 bool combine_animation_and_caption_frame( ) {
-
-// TODO: test ...
-    return true;
-
     std::string string_animation_path = output_rendered_animation_file_path.string();
     std::string string_caption_path = output_rendered_caption_file_path.string();
     std::string string_with_captions_target_path = output_with_captions_target_file_path.string();
@@ -272,26 +296,6 @@ int main(int argc, char* argv[]) {
     trace << "Input frame rate is " << global_input_frame_rate << std::endl;
     trace << "Output frame rate is " << global_output_frame_rate << std::endl;
 
-    //  Ensure output directory exists for animation frames without captions.
-    if (fs::exists(OUTPUT_ANIMATION_DIR)) {
-        for (const auto& file_entry : fs::directory_iterator(OUTPUT_ANIMATION_DIR)) {
-            if (file_entry.is_regular_file() && file_entry.path().extension() == ".png") {
-                fs::remove(file_entry.path());
-            }
-        }
-    }
-    fs::create_directories(OUTPUT_ANIMATION_DIR); //  no error if it already exists
-
-    //  Ensure output directory exists for animation-with-caption frames.
-    if (fs::exists(OUTPUT_WITH_CAPTIONS_DIR)) {
-        for (const auto& file_entry : fs::directory_iterator(OUTPUT_WITH_CAPTIONS_DIR)) {
-            if (file_entry.is_regular_file() && file_entry.path().extension() == ".png") {
-                fs::remove(file_entry.path());
-            }
-        }
-    }
-    fs::create_directories(OUTPUT_WITH_CAPTIONS_DIR); //  no error if it already exists
-
     //  Point to, and count, the input SVG files.
     //  They are in two directories.
     get_and_sort_animation_and_caption_filenames();
@@ -315,6 +319,33 @@ int main(int argc, char* argv[]) {
     } else {
         global_have_captions = true;
         trace << "Captions found" << std::endl;
+    }
+
+    //  Check if already have PNG files without captions.
+    for (const auto& file_entry : fs::directory_iterator(OUTPUT_ANIMATION_DIR)) {
+        if (!file_entry.is_regular_file()) continue;
+        std::string file_name = file_entry.path().filename().string();
+        if ((file_name.rfind("frame_", 0) == 0) && (file_entry.path().extension() == ".svg")) {
+            animation_files.push_back(file_entry.path());
+        }
+    }
+    if (animation_files.size() < 2) {
+        global_have_png_frames_without_captions = false;
+        trace << "Do not have PNG files without captions" << std::endl;
+    } else {
+        global_have_png_frames_without_captions = true;
+        trace << "PNG files without captions found" << std::endl;
+    }
+
+    //  Ensure the two output directories exist.
+    ensure_exists_output_directory(OUTPUT_ANIMATION_DIR);
+    ensure_exists_output_directory(OUTPUT_WITH_CAPTIONS_DIR);
+
+    //  If have PNG frames without captions but no caption SVG files,
+    //  exit because there is nothing to do.
+    if ((global_have_png_frames_without_captions) && (!global_have_captions)) {
+        trace << "Exiting because have PNG frames without captions but no caption SVG files." << std::endl;
+        exit(1);
     }
 
     //  Get the first two animation file frame numbers.
@@ -422,13 +453,15 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        //  Specify the final target path for the rendered animation frames.
-        //  The filenames include the output frame number.
+        //  Specify the final target path for the rendered animation frame.
+        //  The filename includes the output frame number.
         fs::path output_animation_target_file_path;
         std::ostringstream oss_animation_target_filename;
         oss_animation_target_filename << "frame_" << std::setw(5)
             << std::setfill('0') << output_frame_number << ".png";
         output_animation_target_file_path = OUTPUT_ANIMATION_DIR / oss_animation_target_filename.str();
+        std::ostringstream oss_output_filename;
+        output_rendered_animation_file_path = output_animation_target_file_path;
 
         //  Specify the final target path for the rendered frame that includes
         //  captions shown at the bottom of the image.
@@ -437,15 +470,13 @@ int main(int argc, char* argv[]) {
             << std::setfill('0') << output_frame_number << ".png";
         output_with_captions_target_file_path = OUTPUT_WITH_CAPTIONS_DIR / oss_with_captions_target_filename.str();
 
-        //  Specify the target output path, including filename,
-        //  for the current animation output frame.
-        std::ostringstream oss_output_filename;
-        output_rendered_animation_file_path = output_animation_target_file_path;
-
-        //  If the animation has changed, convert the new frame from SVG to PNG.
+        //  If the animation has changed, convert the new frame from SVG to PNG,
+        //  unless it already was rendered during an earlier use of this program.
         size_t nearest_animation_frame_number = get_nearest_frame(idealized_input_frame_number,
-            recent_animation_frame_number, next_animation_frame_number);
-        if ((nearest_animation_frame_number != rendered_animation_frame_number) || (rendered_animation_frame_number < 0)) {
+                recent_animation_frame_number, next_animation_frame_number);
+        if ((nearest_animation_frame_number
+                != rendered_animation_frame_number)
+                || (rendered_animation_frame_number < 0)) {
             // Build full input path.
             std::ostringstream oss_input_filename;
             if ((nearest_animation_frame_number == recent_animation_frame_number) || (rendered_animation_frame_number < 0)) {
@@ -456,13 +487,18 @@ int main(int argc, char* argv[]) {
                 rendered_animation_frame_number = next_animation_frame_number;
             }
             fs::path input_animation_file_path =
-                fs::path(INPUT_ANIMATION_DIR) / (oss_input_filename.str());
-            fs::remove(output_rendered_animation_file_path);
-            trace << "Deleted " << output_rendered_animation_file_path.string() << std::endl;
-            // Render new animation, ignore any error.
-            bool ok = convert_svg_to_png(input_animation_file_path, output_rendered_animation_file_path);
-            trace << "Converted " << input_animation_file_path.string() << " to "
-                << output_rendered_animation_file_path.string() << std::endl;
+                    fs::path(INPUT_ANIMATION_DIR) / (oss_input_filename.str());
+            //  If the PNG file does not yet exist, create it by converting from SVG file.
+            fs::path path_to_output_rendered_animation_file = output_rendered_animation_file_path;
+            if ((fs::exists(path_to_output_rendered_animation_file))
+                    && (fs::is_regular_file(path_to_output_rendered_animation_file))) {
+                trace << path_to_output_rendered_animation_file.string() << " already exists" << std::endl;
+            } else {
+                // Render new animation, ignore any error.
+                bool ok = convert_svg_to_png(input_animation_file_path, output_rendered_animation_file_path);
+                trace << "Converted " << input_animation_file_path.string() << " to "
+                        << output_rendered_animation_file_path.string() << std::endl;
+            }
         }
 
         //  If the previous animation output frame used the same animation frame, copy
@@ -496,9 +532,10 @@ int main(int argc, char* argv[]) {
             combine_animation_and_caption_frame( );
         }
 
-        //  CPU cooldown if Inkscape was used.
-        if (!global_use_low_resolution) {
+        //  Short CPU cooldown if Inkscape was used.
+        if (global_need_cooldown) {
             std::this_thread::sleep_for(COOLDOWN);
+            global_need_cooldown = false;
         }
 
         //  Keep track of the just-rendered animation frame number, the most recently
