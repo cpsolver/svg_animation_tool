@@ -228,14 +228,18 @@
  *                      (e.g. "3.5") or MM:SS (e.g. "1:30").  This
  *                      directive is designed to match animation timing
  *                      to the timing of an audio track.
- *                      If the desired time has already passed, or there
- *                      are not enough freeze frames during that part of
- *                      the animation, the name of the most recent
- *                      keyframe SVG file is reported in the output.
- *                      Otherwise the file output_percent_scale_duration.txt
- *                      is written with calculated values that attempt to
- *                      delay or shorten freeze frames to achieve the
- *                      desired timestamp.
+ *                      If the there are not enough frames since the
+ *                      previous desired-timestamp directive, the latest
+ *                      frame is effectively repeated by creating an SVG
+ *                      file with a frame number that skips to the desired
+ *                      time.  Regardless of whether the desired time has
+ *                      passed or not yet been reached, the file
+ *                      output_percent_scale_duration.txt contains
+ *                      suggested values for the directives named
+ *                      percent-scale-animation-duration, such that those
+ *                      suggested value will increase or decrease the
+ *                      number of frames to achieve the desired timestamp
+ *                      when this program runs the next time.
  * 
  *     percent-scale-animation-duration N - A scale factor, expressed as a
  *                      percent, scales (adjusts) the animation duration
@@ -255,10 +259,10 @@
  *                                values, change detection detail
  *   output_summary_animate.txt - concise run summary: settings, per-segment
  *                                change counts, animated id list
- *   output_percent_scale_duration.txt - Automatically generated values that
- *                                override the percent-scale-animation-duration
- *                                directives.  File can be deleted or renamed
- *                                to ignore these adjustments.
+ *   output_percent_scale_duration.txt - Contains suggested values for the
+ *                                directive named percent-scale-animation-duration.
+ *                                These values are calculated to achieve the
+ *                                desired timestamp timings.
  *
  *   Frames are written as: <outputDir>/frame_NNNN.svg
  *
@@ -353,7 +357,7 @@ double secondsDelayCaptionNext = 0.8;
 
 // Scale factor for freeze frames, in percent "units",
 // can be changed by percent-scale-animation-duration directive.
-int percentScaleFreezeTime = 100;
+int globalPercentScaleAnimationDuration = 100;
 
 // Toggled by full-skip-mode-on and full-skip-mode-off directives.
 bool fullSkipMode = false;
@@ -373,12 +377,15 @@ const int DIGITS = 5;
 int globalFrame = 0;
 
 // Info at the previous desired-timestamp directive.
-int globalFrameAtPreviousDesiredTimestamp = 0;
-int globalFrameAtDesiredTimestamp = 0;
-int globalScalableFramesSinceTimestamp = 0;
+int globalFrameBasedOnPreviousDesiredTimestamp = 0;
+int globalFrameBasedOnDesiredTimestamp = 0;
+int globalFrameActualAtPreviousDesiredTimestamp = 0;
+int globalNonScaledFramesSinceTimestamp = 0;
+int globalScaledFramesSinceTimestamp = 0;
 
-// Count the words across multiple accumulated captions.
-int globalWordsSinceDesiredTimeDirective = 0;
+// Info needed for caption timing.
+int globalWordsSincePreviousCaptionSync = 0;
+int globalFrameCountAtPreviousCaptionSync = 0;
 
 // Caption content storage.  Includes start and end times.
 std::vector<std::string> captionQueue;
@@ -394,10 +401,6 @@ std::vector<CaptionEntry> captionEntries;
 
 // Per-caption word counts.
 std::vector<int> captionWordCounts;
-
-// Freeze frame percent integers.
-std::vector<int> globalFreezeAnimateScalePercentStartFrame;
-std::vector<int> globalFreezeAnimateScalePercent;
 
 
 // ------------------------------------------------
@@ -1710,7 +1713,7 @@ void calculateCaptionTiming(int currentTokenIndex)
         if (globalCaptionQueueIndex < (int)captionWordCounts.size()) {
             wordCount = std::max(captionWordCounts[globalCaptionQueueIndex], 1);
         }
-        globalWordsSinceDesiredTimeDirective += wordCount;
+        globalWordsSincePreviousCaptionSync += wordCount;
         int durationFrames = (int)((captionsFramesPerSecond
                 * (wordCount * 60.0 / captionWordsPerMinute)) + 0.5);
         // Store this caption and its start and end frames.
@@ -1959,7 +1962,11 @@ int main(int argc, char* argv[]) {
             } else {
                 segFrames = framesPerStep;
             }
-            globalScalableFramesSinceTimestamp += segFrames;
+
+            //  Scale animation duration using percent value from percent-scale-animation-duration directive.
+            globalNonScaledFramesSinceTimestamp += segFrames;
+            segFrames = (int)((segFrames * globalPercentScaleAnimationDuration ) / 100.0);
+            globalScaledFramesSinceTimestamp += segFrames;
 
             collectingMode = "";
             if (window.size() < 2) {
@@ -2299,8 +2306,9 @@ int main(int argc, char* argv[]) {
             int freezeN = 0;
             try { freezeN = std::stoi(scriptTokens[tokenIndex + 1]); } catch (...) { ++tokenIndex; continue; }
             //  Scale freeze duration using percent value from percent-scale-animation-duration directive.
-            freezeN = (int)((freezeN * percentScaleFreezeTime ) / 100.0);
-            globalScalableFramesSinceTimestamp += freezeN;
+            globalNonScaledFramesSinceTimestamp += freezeN;
+            freezeN = (int)((freezeN * globalPercentScaleAnimationDuration ) / 100.0);
+            globalScaledFramesSinceTimestamp += freezeN;
             if (freezeN <= 0) { tokenIndex += 2; continue; }
             if (window.empty()) {
                 std::string msg = "Error: 'freeze' requires a keyframe but none is loaded. Skipping.";
@@ -2336,9 +2344,9 @@ int main(int argc, char* argv[]) {
             collectingMode = "";
             int val = consumeOptionalInt(tokenIndex);
             if (val > 0) {
-                percentScaleFreezeTime = val;
-                trace   << "percent-scale-animation-duration: " << percentScaleFreezeTime << "\n";
-                summary << "percent-scale-animation-duration: " << percentScaleFreezeTime << "\n";
+                globalPercentScaleAnimationDuration = val;
+                trace   << "percent-scale-animation-duration: " << globalPercentScaleAnimationDuration << "\n";
+                summary << "percent-scale-animation-duration: " << globalPercentScaleAnimationDuration << "\n\n";
             } else {
                 std::cout << "WARNING: percent-scale-animation-duration requires a positive integer — ignored.\n";
             }
@@ -2599,7 +2607,29 @@ int main(int argc, char* argv[]) {
             }
             trace   << "sync-captions-here\n";
             summary << "sync-captions-here\n";
+            summary << "  keyframe: " << lastSvgBFilename << "\n";
             calculateCaptionTiming(tokenIndex);
+
+            // Calculate a suggested value for caption-words-per-minute.
+            // If this suggested value is used next time, each caption word will
+            // get the same amount of screen time as each other caption word.
+            int frameCountSincePreviousCaptionSync = globalFrame - globalFrameCountAtPreviousCaptionSync;
+            if ((globalWordsSincePreviousCaptionSync > 0 ) && (captionWordsPerMinute > 1) && (frameCountSincePreviousCaptionSync > 0)) {
+                int measuredWordsPerMinute = static_cast<int>(
+                        std::round((globalWordsSincePreviousCaptionSync
+                        * captionsFramesPerSecond * 60.0) / frameCountSincePreviousCaptionSync));
+                summary << "  elapsed frames since previous sync is " << frameCountSincePreviousCaptionSync << "\n"
+                        << "  suggested caption-words-per-minute = measured words per minute = "
+                        << measuredWordsPerMinute << "\n\n";
+                if (measuredWordsPerMinute > 200) {
+                    std::cout << "WARNING: measured caption words per minute near keyframe "
+                            << lastSvgBFilename << " exceed 200, measured as " << measuredWordsPerMinute << "\n";
+                    summary << "WARNING: measured caption words per minute near keyframe "
+                            << lastSvgBFilename << " exceed 200, measured as " << measuredWordsPerMinute << "\n";
+                }
+            }
+            globalWordsSincePreviousCaptionSync = 0;
+            globalFrameCountAtPreviousCaptionSync = globalFrame;
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
@@ -2613,15 +2643,12 @@ int main(int argc, char* argv[]) {
         // If the animation was slower than needed, the desired timestamp has
         // already been exceeded and this fact is reported.
         // Calculations are done to suggest specific numbers that can be used
-        // in the script with the directives caption-words-per-minute
-        // and percent-scale-animation-duration.  These suggested values should cause
-        // the desired timestamp to be reached at the desired animation points
-        // and caption points.
+        // in the script with the directive percent-scale-animation-duration.
+        // These suggested values should cause the desired timestamp to be
+        // reached at the desired animation points.
         if (tok == "desired-timestamp") {
             flushObjectIds();
             collectingMode = "";
-            trace   << "desired-timestamp\n";
-            summary << "desired-timestamp\n";
             if (tokenIndex + 1 < scriptTokens.size()) {
                 const std::string& tstr = scriptTokens[tokenIndex + 1];
                 double desiredSecs = -1.0;
@@ -2638,25 +2665,51 @@ int main(int argc, char* argv[]) {
                     // Try plain seconds (int or decimal)
                     try { desiredSecs = std::stod(tstr); } catch (...) {}
                 }
-
+                // If the actual frame count is zero, skip this directive because
+                // division by zero is possible.
+                int actualFrameCount = globalFrame - globalFrameActualAtPreviousDesiredTimestamp;
+                if (actualFrameCount < 1) {
+                    // Point to the next token to consume the time token.
+                    ++tokenIndex;
+                    summary << "WARNING: desired-timestamp directive encountered when no frames have elapsed\n";
                 // Handle normal case where desired timestamp is positive number of seconds.
-                if (desiredSecs >= 0.0) {
+                } else if (desiredSecs >= 0.0) {
+                    trace   << "desired-timestamp  " << tstr << " = " << desiredSecs << " seconds\n";
+                    summary << "desired-timestamp  " << tstr << " = " << desiredSecs << " seconds\n";
                     // Calculate the frame number that matches the desired timestamp.
-                    globalFrameAtDesiredTimestamp = (int)std::round(desiredSecs
+                    globalFrameBasedOnDesiredTimestamp = (int)std::round(desiredSecs
                             * captionsFramesPerSecond);
 
+                    // Log the recent SVG keyframe filename.
+                    summary << "  keyframe: " << lastSvgBFilename << "\n";
+                    percentScaleDurationFile << lastSvgBFilename << "\n"
+                            << globalFrame << "\n";
+
+                    // Calculate the number of frames, and number of seconds, that did elapse,
+                    // and should have elapsed, between the two nearest desired timestamps.
+                    int idealFramesBetweenDesiredTimestamps = globalFrameBasedOnDesiredTimestamp
+                            - globalFrameBasedOnPreviousDesiredTimestamp;
+                    double actualTimeElapsed = (double)actualFrameCount / (double)captionsFramesPerSecond;
+                    double desiredTimeElapsed = (double)idealFramesBetweenDesiredTimestamps
+                            / (double)captionsFramesPerSecond;
+                    summary << "  frames, actual " << actualFrameCount
+                            << " , ideal " << idealFramesBetweenDesiredTimestamps << "\n"
+                            << "  seconds, actual " << std::fixed << std::setprecision(1) << actualTimeElapsed
+                            << " , desired " << std::fixed << std::setprecision(1) << desiredTimeElapsed << "\n\n";
+
                     // Calculate the number of frames too many, or too few, compared to the
-                    // frame number at the desired timestamp.
-                    int framesTooMany = 0;
-                    int framesTooFew = 0;
-                    if ((globalFrameAtDesiredTimestamp - globalFrame) > 0) {
-                    	framesTooMany = globalFrameAtDesiredTimestamp - globalFrame;
-                    } else if ((globalFrame - globalFrameAtDesiredTimestamp) > 0) {
-                        framesTooFew = globalFrame - globalFrameAtDesiredTimestamp;
+                    // desired time interval.
+                    int framesTooMany = actualFrameCount - idealFramesBetweenDesiredTimestamps;
+                    int framesTooFew = idealFramesBetweenDesiredTimestamps - actualFrameCount;
+                    if (framesTooMany > 0) {
+                        framesTooFew = 0;
+                        summary << framesTooMany << " frames too many ********************####################\n";
+                    } else if (framesTooFew > 0) {
+                        framesTooMany = 0;
+                        summary << framesTooFew << " frames too few ********************\n";
+                    } else if (actualFrameCount == idealFramesBetweenDesiredTimestamps) {
+                        summary << "exact timing match\n";
                     }
-                    summary << "  globalFrameAtDesiredTimestamp = " << globalFrameAtDesiredTimestamp
-                            << "   framesTooMany = " << framesTooMany
-                            << "   framesTooFew to " << framesTooFew << "\n";
 
                     // If the desired timestamp is later than the current frame,
                     // jump ahead to the desired frame number.
@@ -2664,68 +2717,36 @@ int main(int argc, char* argv[]) {
                     // so the rendering program should handle this skip by repeating the
                     // same frame until it reaches the frame number specified in the next
                     // generated SVG frame.
-                    if (globalFrame < globalFrameAtDesiredTimestamp) {
-                        globalFrame = globalFrameAtDesiredTimestamp;
-                        summary << "  " << framesTooFew << " frames too few ********************\n";
-                        summary << "  jumping ahead to frame number " << globalFrameAtDesiredTimestamp << "\n";
-                    } else if (framesTooFew > 0) {
-                        summary << "  " << framesTooMany << " frames too many ********************####################\n";
+                    // If the current time is beyond the desired timestamp, warn about
+                    // the animation taking too long during this interval between
+                    // desired timestamps.
+                    if (framesTooFew > 0) {
+                        globalFrame = globalFrameBasedOnDesiredTimestamp;
+                        summary << "  jumping ahead to frame number " << globalFrameBasedOnDesiredTimestamp << "\n";
+                    } else if (framesTooMany > 0) {
                         std::cout << "WARNING: animation too long at keyframe " << lastSvgBFilename << "\n";
                     }
 
-                    // If the animation is still in progress at the desired timestamp,
-                    // or has not yet reached the desired timestamp, write one line to
-                    // a special file that specifies a percent adjustment to the lengths
-                    // of freeze and animate frames since the previous desired-timestamp
-                    // directive.   If those numbers are used the next time animation is
-                    // generated, freeze frames and animate frame durations will be
-                    // adjusted so the desired timestamp is reached.  If this adjustment
-                    // is not wanted, delete or rename the special file.
-
-                    // Calculate a value for scaling freeze frame and animate durations,
-                    // and write those values to a separate file.
-                    int suggestedPercentScaleFreezeAnimateDuration = 100;
-                    if (framesTooFew > 0) {
-                        suggestedPercentScaleFreezeAnimateDuration =
-                                (int)(percentScaleFreezeTime + (framesTooFew
-                                / globalScalableFramesSinceTimestamp));
-                    } else if (framesTooMany > 0) {
-                        suggestedPercentScaleFreezeAnimateDuration =
-                                (int)(percentScaleFreezeTime - (framesTooMany
-                                / globalScalableFramesSinceTimestamp));
-                    }
-                    summary << "  scalable frames since timestamp " << globalScalableFramesSinceTimestamp
-                            << "\n";
+                    // Calculate and write suggested values for the directive named
+                    // percent-scale-animation-duration.
+                    // If these numbers are used the next time animation is generated,
+                    // freeze frames and animate frame durations will be adjusted
+                    // so the desired timestamp is reached.
+                    double nonScalableFrames = actualFrameCount - globalScaledFramesSinceTimestamp;
+                    double scalableFrames = globalScaledFramesSinceTimestamp * 100.0
+                            / globalPercentScaleAnimationDuration;
+                    double decimalSuggestedPercentScaleAnimationDuration =
+                            (100.0 * (idealFramesBetweenDesiredTimestamps - nonScalableFrames))
+                            / scalableFrames;
+                    int integerSuggestedPercentScaleAnimationDuration =
+                            (int)std::round(decimalSuggestedPercentScaleAnimationDuration);
                     summary << "  suggested percent-scale-animation-duration "
-                            << suggestedPercentScaleFreezeAnimateDuration << "\n";
-                    percentScaleDurationFile << lastSvgBFilename
-                            << "\n  percent-scale-animation-duration "
-                            << suggestedPercentScaleFreezeAnimateDuration << "\n\n";
-                    // Calculate a suggested value for caption-words-per-minute.
-                    // If this suggested value is used next time, each caption word will
-                    // get the same amount of screen time as each other caption word.
-                    int framesBetweenDesiredTimestampDirectives = globalFrameAtDesiredTimestamp
-                            - globalFrameAtPreviousDesiredTimestamp;
-                    if ((captionWordsPerMinute > 1) && (framesBetweenDesiredTimestampDirectives > 0)) {
-                        summary << "  words since last desired-timestamp " << globalWordsSinceDesiredTimeDirective << "\n";
-                        int measuredWordsPerMinute = static_cast<int>(
-                                std::round((globalWordsSinceDesiredTimeDirective
-                                * captionsFramesPerSecond * 60.0) / framesBetweenDesiredTimestampDirectives));
-                        summary << "  measured words per minute " << measuredWordsPerMinute << "\n";
-                        double secondsTooMany = (double)framesTooFew / (double)captionsFramesPerSecond;
-                        double minutesTooMany = secondsTooMany / 60.0;
-                        double secondsBetweenDesiredTimestampDirectives = (double)framesBetweenDesiredTimestampDirectives
-                                / (double)captionsFramesPerSecond;
-                        double minutesBetweenDesiredTimestampDirectives = secondsBetweenDesiredTimestampDirectives / 60.0;
-                        double suggestedCaptionWordsPerMinute = (minutesTooMany
-                                * (double)captionWordsPerMinute * 100.0) / minutesBetweenDesiredTimestampDirectives;
-                        summary << "  suggested caption-words-per-minute "
-                                << std::fixed << std::setprecision(1)
-                                << suggestedCaptionWordsPerMinute << "\n";
-                    }
+                            << integerSuggestedPercentScaleAnimationDuration << "\n";
+                    percentScaleDurationFile << "  suggested percent-scale-animation-duration "
+                            << integerSuggestedPercentScaleAnimationDuration << "\n";
 
                     summary << "\n";
-                    globalWordsSinceDesiredTimeDirective = 0;
+
                     // Point to the next token to consume the time token.
                     ++tokenIndex;
                 } else {
@@ -2735,8 +2756,10 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
-            globalScalableFramesSinceTimestamp = 0;
-            globalFrameAtPreviousDesiredTimestamp = globalFrame;
+            globalFrameActualAtPreviousDesiredTimestamp = globalFrame;
+            globalScaledFramesSinceTimestamp = 0;
+            globalFrameBasedOnPreviousDesiredTimestamp = globalFrameBasedOnDesiredTimestamp;
+            globalWordsSincePreviousCaptionSync = 0;
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
