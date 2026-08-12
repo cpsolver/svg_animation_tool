@@ -197,7 +197,7 @@
  * 
  *   Caption-related directives:
  *
- *     caption-being  - A special text block used to specify captions.
+ *     caption-begin  - A special text block used to specify captions.
  *                      This text is collected the same as other
  *                      prefix-begin directives, but get special handling
  *                      for use as captions, either closed captions or
@@ -206,15 +206,15 @@
  *     captions-frames-per-second N - Frames per second for caption timing
  *                      calculations.  If not specified, default is 30.
  *
- *     caption-words-per-minute - Specifies the rate at which captions change
- *                      to the next caption, based on the number of words in
- *                      the captions.
- *
  *     sync-captions-here   Synchronizes (matches) the beginning of the next
  *                      caption (and the end of the previous caption) to
  *                      the current frame number in the animation.  The
  *                      time delay specified by the seconds-delay-caption-next
  *                      directive is added to this synchronization point.
+ *                      When the next sync-captions-here directive occurs,
+ *                      the group of captions are displayed, with the timing
+ *                      calculated to give each word the same reading time
+ *                      duration.
  *
  *     seconds-delay-caption-next   Specifies the time delay that is added
  *                      when the sync-captions-here directive is used.
@@ -335,8 +335,9 @@ std::ofstream percentScaleDurationFile;
 
 // Accumulated per-segment info written to the summary file at the end.
 std::string sequenceInfo;
-// Filename of the most recent svgB — written as the final entry in sequenceInfo.
+// Filename of the most recent, or B keyframe, SVG filename.
 std::string lastSvgBFilename;
+std::string globalRecentSvgFilename = "";
 
 // Global values set by directives.
 
@@ -346,10 +347,6 @@ std::string outputDir = "frames_svg";
 // Frames per second for caption timing calculations,
 // can be changed by captions-frames-per-second directive.
 int captionsFramesPerSecond = 30;
-
-// Words per minute for caption timing calculations,
-// can be changed by caption-words-per-minute directive.
-int captionWordsPerMinute = 130;
 
 // Seconds to delay the first caption in a sequence, can be changed
 // by seconds-delay-caption-next directive.
@@ -384,10 +381,9 @@ int globalNonScaledFramesSinceTimestamp = 0;
 int globalScaledFramesSinceTimestamp = 0;
 
 // Info needed for caption timing.
-int globalWordsSincePreviousCaptionSync = 0;
-int globalFrameCountAtPreviousCaptionSync = 0;
+int globalPreviousCaptionEndFrame = 0;
 
-// Caption content storage.  Includes start and end times.
+// Caption content storage.
 std::vector<std::string> captionQueue;
 int globalCaptionQueueIndex = 0;
 std::vector<int> captionTokenMarker;
@@ -398,8 +394,6 @@ struct CaptionEntry {
     std::string narrationText; // raw text, brackets and all, for the narration file
 };
 std::vector<CaptionEntry> captionEntries;
-
-// Per-caption word counts.
 std::vector<int> captionWordCounts;
 
 
@@ -1670,63 +1664,101 @@ std::string stripBracketedNotes(const std::string& text) {
 
 // Assign start and end times for the captions that have accumulated since
 // the last time this function was accessed.  Each caption's duration is
-// computed independently based on its own word count and
-// captionWordsPerMinute.  The ending time of one caption equals the
-// starting time of the next caption.  If no captions have accumatled,
-// do nothing.
+// computed independently based on its own word count and the number of
+// frames for all the captions in this group.  The ending time of one
+// caption equals the starting time of the next caption.  If no captions
+// have accumatled, do nothing.
 void calculateCaptionTiming(int currentTokenIndex)
 {
-    // Calculate the number of accumulated captions.  Use the token pointer to
+    // Use the frame number at which the previous captions ended
+    // as the starting frame number for these captions.
+    // If this is the first group of captions, add the delay specified by
+    // the seconds-delay-caption-next directive.
+    int captionStartFrame = globalPreviousCaptionEndFrame;
+    if (captionStartFrame < 1) {
+        captionStartFrame = static_cast<int>(secondsDelayCaptionNext * captionsFramesPerSecond);
+    }
+
+    // Point to the first caption in the recently accumulated
+    // captions.
+    int indexToFirstCaption = globalCaptionQueueIndex;
+
+    // Count the number of accumulated captions.  Use the token pointer to
     // identify the current location within the script.
+    // Also count the number of words since the previous sync-captions-here
+    // directive.  Do not include words in square brackets.
     int numberOfAccumCaptions = 0;
-    int indexToCaptions = globalCaptionQueueIndex;
+    int indexToCaptions = indexToFirstCaption;
+    int wordsSincePreviousCaptionSync = 0;
     while (indexToCaptions < (int)captionQueue.size() &&
            captionTokenMarker[indexToCaptions] <= currentTokenIndex) {
         numberOfAccumCaptions++;
+        if (indexToCaptions < (int)captionWordCounts.size()) {
+            wordsSincePreviousCaptionSync += std::max(captionWordCounts[indexToCaptions], 1);
+        }
         indexToCaptions++;
-    }
+     }
     if (numberOfAccumCaptions <= 0) {
+        summary << "  no captions yet\n\n";
         return;
     }
+    summary << "  " << globalRecentSvgFilename << "\n";
 
-    // Get the frame at which the previous caption (in the previous caption sequence) ends.
-    // If this is the first caption, assume it ends after the delay specified in
-    // secondsDelayCaptionNext.  Use this end frame as the start frame for the next caption.
-    int captionStartFrame;
-    if (captionEntries.empty()) {
-        captionStartFrame = static_cast<int>((captionsFramesPerSecond * secondsDelayCaptionNext) + 0.5);
-    } else {
-        captionStartFrame = captionEntries.back().endFrame;
+    // If there are no words in the captions, count as if there is one word.
+    // This avoids division by zero.
+    if (wordsSincePreviousCaptionSync < 1) {
+        wordsSincePreviousCaptionSync = 1;
     }
 
-    // Calculate, then assign, the start and end time for each accumulated caption.
-    // The duration of each caption is based on the word count and the words per second
-    // rate specified in the caption-words-per-minute directive.
+    // Calculate how many frames of reading time should be allowed for each
+    // caption based on the word count.
+    // If no frames have elapsed, allow one frame per word anyway.
+    int durationFramesPerWord;
+    if (globalFrame > captionStartFrame) {
+        durationFramesPerWord = static_cast<int>((double)(globalFrame - captionStartFrame)
+                / (double)wordsSincePreviousCaptionSync);
+    } else {
+        durationFramesPerWord = 1;
+    }
+    summary << "  durationFramesPerWord = " << durationFramesPerWord << "\n";
+
+    // If the calculated duration per word exceeds one second, display a warning.
+    if (durationFramesPerWord > captionsFramesPerSecond) {
+        std::cout << "WARNING: measured duration frames per word is "
+                << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
+        summary << "WARNING: measured duration frames per word is "
+                << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
+    }
+
+    // Specify the start and end frame for each caption.
+    // If a caption is empty, count it as one word anyway.
+    // Specify the end frame number for the last caption to be based on the 
+    // globalFrame count (to sync it with animation) and add the delay
+    // specified by the directive named seconds-delay-caption-next.
+    indexToCaptions = globalCaptionQueueIndex;
     int captionEndFrame;
     for (int indexOffsetToCurrentCaption = 0;
             indexOffsetToCurrentCaption < numberOfAccumCaptions;
             indexOffsetToCurrentCaption++) {
-        // Calculate the duration of this caption in frames.  Round to the
-        // nearest frame rather than truncate.  Assume one word if the
-        // caption is empty.
         int wordCount = 1;
-        if (globalCaptionQueueIndex < (int)captionWordCounts.size()) {
-            wordCount = std::max(captionWordCounts[globalCaptionQueueIndex], 1);
+        if (indexToCaptions < (int)captionWordCounts.size()) {
+            wordCount = std::max(captionWordCounts[indexToCaptions], 1);
         }
-        globalWordsSincePreviousCaptionSync += wordCount;
-        int durationFrames = (int)((captionsFramesPerSecond
-                * (wordCount * 60.0 / captionWordsPerMinute)) + 0.5);
-        // Store this caption and its start and end frames.
-        captionEndFrame = captionStartFrame + durationFrames;
-        const std::string& rawCaptionText = captionQueue[globalCaptionQueueIndex];
+        captionEndFrame = captionStartFrame + (durationFramesPerWord * wordCount);
+        const std::string& rawCaptionText = captionQueue[indexToCaptions];
         std::string strippedCaptionText = stripBracketedNotes(rawCaptionText);
+        if (indexOffsetToCurrentCaption == numberOfAccumCaptions - 1) {
+            captionEndFrame = globalFrame + (secondsDelayCaptionNext * captionsFramesPerSecond);
+        }
         captionEntries.push_back({captionStartFrame, captionEndFrame, strippedCaptionText, rawCaptionText});
         summary << "Caption from " << captionStartFrame << " to " << captionEndFrame << " is: "
                 << strippedCaptionText << "\n";
         captionStartFrame = captionEndFrame;
-        // Point to the next caption.
-        globalCaptionQueueIndex++;
+        indexToCaptions++;
     }
+    globalPreviousCaptionEndFrame = captionEndFrame;
+    globalCaptionQueueIndex = indexToCaptions;
+    summary << "\n";
 }
 
 // ------------------------------------------------
@@ -2272,6 +2304,7 @@ int main(int argc, char* argv[]) {
             sequenceInfo += "\n" + svgB.filename + "\n";
 
             lastSvgBFilename = svgB.filename;
+            globalRecentSvgFilename = lastSvgBFilename;
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
@@ -2333,6 +2366,7 @@ int main(int argc, char* argv[]) {
             sequenceInfo += current.filename + "\n"
                          + "  freeze\n";
             // Freeze has no B keyframe.
+            globalRecentSvgFilename = lastSvgBFilename;
             lastSvgBFilename = "";
             prevWasAnimate = false;
             tokenIndex += 2; continue;
@@ -2559,18 +2593,13 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // ── caption-words-per-minute ──────
-        if (tok == "caption-words-per-minute") {
+        // ── sync-captions-here ──────
+        if (tok == "sync-captions-here") {
             flushObjectIds();
             collectingMode = "";
-            int val = consumeOptionalInt(tokenIndex);
-            if (val > 0) {
-                captionWordsPerMinute = val;
-                trace   << "caption-words-per-minute: " << captionWordsPerMinute << "\n";
-                summary << "caption-words-per-minute: " << captionWordsPerMinute << "\n";
-            } else {
-                std::cout << "WARNING: caption-words-per-minute requires a positive integer — ignored.\n";
-            }
+            trace   << "sync-captions-here\n";
+            summary << "sync-captions-here\n";
+            calculateCaptionTiming(tokenIndex);
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
@@ -2588,48 +2617,6 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: seconds-delay-caption-next requires decimal or integer seconds — ignored.\n";
             }
-            // Point to the next token, and repeat the loop.
-            ++tokenIndex;
-            continue;
-        }
-
-        if (tok == "sync-captions-here") {
-            flushObjectIds();
-            collectingMode = "";
-            // Adjust the ending time of the previous caption to match the frame number
-            // at which the sync-caption directive occurs, plus the delay specified in
-            // secondsDelayCaptionNext.  The next caption will begin at this same frame.
-            if (!captionEntries.empty()) {
-                int previousCaptionEndFrame = globalFrame
-                        + static_cast<int>((captionsFramesPerSecond * secondsDelayCaptionNext) + 0.5);
-                captionEntries.back().endFrame = previousCaptionEndFrame;
-                summary << "  previous caption end frame is " << previousCaptionEndFrame << "\n";
-            }
-            trace   << "sync-captions-here\n";
-            summary << "sync-captions-here\n";
-            summary << "  keyframe: " << lastSvgBFilename << "\n";
-            calculateCaptionTiming(tokenIndex);
-
-            // Calculate a suggested value for caption-words-per-minute.
-            // If this suggested value is used next time, each caption word will
-            // get the same amount of screen time as each other caption word.
-            int frameCountSincePreviousCaptionSync = globalFrame - globalFrameCountAtPreviousCaptionSync;
-            if ((globalWordsSincePreviousCaptionSync > 0 ) && (captionWordsPerMinute > 1) && (frameCountSincePreviousCaptionSync > 0)) {
-                int measuredWordsPerMinute = static_cast<int>(
-                        std::round((globalWordsSincePreviousCaptionSync
-                        * captionsFramesPerSecond * 60.0) / frameCountSincePreviousCaptionSync));
-                summary << "  elapsed frames since previous sync is " << frameCountSincePreviousCaptionSync << "\n"
-                        << "  suggested caption-words-per-minute = measured words per minute = "
-                        << measuredWordsPerMinute << "\n\n";
-                if (measuredWordsPerMinute > 200) {
-                    std::cout << "WARNING: measured caption words per minute near keyframe "
-                            << lastSvgBFilename << " exceed 200, measured as " << measuredWordsPerMinute << "\n";
-                    summary << "WARNING: measured caption words per minute near keyframe "
-                            << lastSvgBFilename << " exceed 200, measured as " << measuredWordsPerMinute << "\n";
-                }
-            }
-            globalWordsSincePreviousCaptionSync = 0;
-            globalFrameCountAtPreviousCaptionSync = globalFrame;
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
@@ -2681,8 +2668,8 @@ int main(int argc, char* argv[]) {
                             * captionsFramesPerSecond);
 
                     // Log the recent SVG keyframe filename.
-                    summary << "  keyframe: " << lastSvgBFilename << "\n";
-                    percentScaleDurationFile << lastSvgBFilename << "\n"
+                    summary << "  keyframe: " << globalRecentSvgFilename << "\n";
+                    percentScaleDurationFile << globalRecentSvgFilename << "\n"
                             << globalFrame << "\n";
 
                     // Calculate the number of frames, and number of seconds, that did elapse,
@@ -2724,7 +2711,7 @@ int main(int argc, char* argv[]) {
                         globalFrame = globalFrameBasedOnDesiredTimestamp;
                         summary << "  jumping ahead to frame number " << globalFrameBasedOnDesiredTimestamp << "\n";
                     } else if (framesTooMany > 0) {
-                        std::cout << "WARNING: animation too long at keyframe " << lastSvgBFilename << "\n";
+                        std::cout << "WARNING: animation too long at keyframe " << globalRecentSvgFilename << "\n";
                     }
 
                     // Calculate and write suggested values for the directive named
@@ -2759,7 +2746,6 @@ int main(int argc, char* argv[]) {
             globalFrameActualAtPreviousDesiredTimestamp = globalFrame;
             globalScaledFramesSinceTimestamp = 0;
             globalFrameBasedOnPreviousDesiredTimestamp = globalFrameBasedOnDesiredTimestamp;
-            globalWordsSincePreviousCaptionSync = 0;
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
