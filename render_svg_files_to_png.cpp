@@ -60,6 +60,7 @@ namespace fs = std::filesystem;
 
 std::vector<fs::path> svg_animation_files;
 std::vector<fs::path> svg_caption_files;
+std::vector<fs::path> png_animation_files;
 std::vector<fs::path> png_files_with_captions;
 
 std::ofstream trace{fs::path{"output_trace_render.txt"}, std::ios::out | std::ios::trunc};
@@ -308,8 +309,8 @@ int main(int argc, char* argv[]) {
         << INPUT_CAPTION_DIR.string() << std::endl;
 
     //  Exit if only a few animation frames.
-    if (svg_animation_files.size() < 3) {
-        trace << "Less than two animation frames found, so exiting" << std::endl;
+    if (svg_animation_files.size() < 5) {
+        trace << "Too few animation frames found, so exiting" << std::endl;
         exit(1);
     }
 
@@ -322,20 +323,24 @@ int main(int argc, char* argv[]) {
         trace << "Captions found" << std::endl;
     }
 
+    //  Ensure the two output directories exist.
+    ensure_exists_output_directory(OUTPUT_ANIMATION_DIR);
+    ensure_exists_output_directory(OUTPUT_WITH_CAPTIONS_DIR);
+
     //  Check if already have PNG files without captions.
     for (const auto& file_entry : fs::directory_iterator(OUTPUT_ANIMATION_DIR)) {
         if (!file_entry.is_regular_file()) continue;
         std::string file_name = file_entry.path().filename().string();
-        if ((file_name.rfind("frame_", 0) == 0) && (file_entry.path().extension() == ".svg")) {
-            svg_animation_files.push_back(file_entry.path());
+        if ((file_name.rfind("frame_", 0) == 0) && (file_entry.path().extension() == ".png")) {
+            png_animation_files.push_back(file_entry.path());
         }
     }
-    if (svg_animation_files.size() < 2) {
-        global_have_png_frames_without_captions = false;
-        trace << "Do not have PNG files without captions" << std::endl;
-    } else {
+    if (png_animation_files.size() > 4) {
         global_have_png_frames_without_captions = true;
-        trace << "PNG files without captions found" << std::endl;
+        trace << "Found " << png_animation_files.size() << " PNG files without captions" << std::endl;
+    } else {
+        global_have_png_frames_without_captions = false;
+        trace << "Did not find PNG files without captions" << std::endl;
     }
 
     //  If have PNG frames without captions but no caption SVG files,
@@ -358,10 +363,6 @@ int main(int argc, char* argv[]) {
         trace << "Exiting because have PNG frames both with and without captions." << std::endl;
         exit(1);
     }
-
-    //  Ensure the two output directories exist.
-    ensure_exists_output_directory(OUTPUT_ANIMATION_DIR);
-    ensure_exists_output_directory(OUTPUT_WITH_CAPTIONS_DIR);
 
     //  Get the first two animation file frame numbers.
     //  Use them as the "recent" and "next" animation frame numbers.
