@@ -165,36 +165,6 @@
  *                      Script directives inside a block are treated as
  *                      plain text and are not executed.
  *
- *   Testing directives:
- *
- *     skip-mode-on   - Testing aid for quickly previewing long scripts.
- *                      While active, all calculations run in full for
- *                      every frame (detectChanges, spread-out, arc,
- *                      generateFrame) so the trace file shows complete
- *                      information, but SVG files are only written for
- *                      three frames per animate segment (the first frame,
- *                      the frame nearest 1/3 through, and the frame
- *                      nearest 2/3 through), and only one frame per
- *                      freeze segment (the first). globalFrame still
- *                      counts all frames, so output frame numbers have
- *                      gaps but remain globally consistent.
- *
- *     skip-mode-off      - Turns off skip-mode-on.  Subsequent animate and
- *                      freeze segments write all frames normally. The
- *                      two directives can be used in pairs to selectively
- *                      skip some segments while fully rendering others.
- *
- *     full-skip-mode-on -  Testing aid that does not write any SVG files,
- *                      but does all calculations, and writes summary
- *                      output information and writes VTT caption file.
- *                      This mode is useful to check timing and debug
- *                      animations based on viewing output files other than
- *                      SVG/PNG images.
- *
- *     full-skip-mode-off - Turns off full-skip-mode-on.  Turning full skip
- *                      mode on and off can be used to generate SVG files
- *                      for limited portions of a long video.
- * 
  *   Caption-related directives:
  *
  *     caption-begin  - A special text block used to specify captions.
@@ -221,7 +191,7 @@
  *                      This time, in decimal seconds, is stored in the
  *                      secondsDelayCaptionNext variable.
  * 
- *   Animation timing directives:
+ *   Animation timing and analysis directives:
  * 
  *     desired-timestamp T - Specifies a desired time at that place in the
  *                      script.  The timestamp T may be decimal seconds
@@ -249,6 +219,28 @@
  *                      desired-timestamp directives to increase or
  *                      decrease the timing so the desired timestamps
  *                      are reached.
+ *
+ *     skip-count-for-animate   - Testing aid for quickly previewing long
+ *                      scripts. While active, all calculations run in full
+ *                      for every frame (detectChanges, spread-out, arc,
+ *                      generateFrame) so the summary file shows complete
+ *                      information, but SVG files are only written for
+ *                      a smaller number of frames per animate segment.
+ *                      If the count is 3, it generates the first frame,
+ *                      the frame nearest 1/3 through, and the frame
+ *                      nearest 2/3 through. The counter globalFrame still
+ *                      counts all frames, so output frame numbers have
+ *                      gaps but remain globally consistent. A count of
+ *                      zero specifies that no SVG files be generated.
+ *                      This zero choice is useful for viewing the summary
+ *                      file and caption VTT file without wasting computer
+ *                      time, and storage access, generating SVG files
+ *                      that will not be used. Different skip mode counts
+ *                      can be used in different parts of a long animation
+ *                      to generate SVG files for just limited portions.
+ *                      If the skip count is large, such as 100, and it
+ *                      exceeds the duration count in the longest animate
+ *                      directive, all SVG file are generated.
  * 
  *
  * -- Output files ------------------------------------------------
@@ -356,8 +348,10 @@ double secondsDelayCaptionNext = 0.8;
 // can be changed by percent-scale-animation-duration directive.
 int globalPercentScaleAnimationDuration = 100;
 
-// Toggled by full-skip-mode-on and full-skip-mode-off directives.
-bool fullSkipMode = false;
+// Controlled by skip-count-for-animate directives.
+int globalSkipCount = 100;
+bool globalSkipMode = false;
+bool globalFullSkipMode = false;
 
 // Frames per animate step, can be changed by "animate" or "frames-per-step" directives
 int framesPerStep = 30;
@@ -1591,7 +1585,7 @@ void writeFrame(int frameNum, const std::string& svgContent)
     fname << outputDir << "/frame_"
           << std::setw(DIGITS) << std::setfill('0') << frameNum
           << ".svg";
-    if (!fullSkipMode) {
+    if (!globalFullSkipMode) {
         writeFile(fname.str(), svgContent);
     }
 }
@@ -1877,7 +1871,6 @@ int main(int argc, char* argv[]) {
     int  currentArcDeg   = 20;    // updated by arc-degrees
     std::string currentSpreadStart = "top";  // updated by spread-out-start-*-end-*
     std::string currentSpreadEnd   = "top";  // updated by spread-out-start-*-end-*
-    bool  skipMode = false;  // toggled by skip-mode-on / skip-mode-off
 
     // Spread entries: one per spread-out directive, each with its own id snapshot
     std::vector<SpreadEntry>  spreadEntries;
@@ -2266,7 +2259,6 @@ int main(int argc, char* argv[]) {
 
             // trace << "  expandedFrames=" << expandedFrames
             //       << "  midFrame=" << midFrame << "\n";
-
             for (int animFrameNum = fStart; animFrameNum < expandedFrames; ++animFrameNum) {
                 double tLinear = (expandedFrames == 1)
                                  ? 0.0
@@ -2275,13 +2267,16 @@ int main(int argc, char* argv[]) {
                 std::string svgOut = generateFrame(svgA, svgB,
                                                    animFrameNum, expandedFrames, midFrame,
                                                    tEased);
-                // In skip mode, only write the first frame, the 1/3 frame,
-                // and the 2/3 frame; all others are skipped but globalFrame
-                // still increments so frame numbers remain consistent.
-                bool shouldWrite = !skipMode
-                                || animFrameNum == fStart
-                                || animFrameNum == expandedFrames / 3
-                                || animFrameNum == (2 * expandedFrames) / 3;
+                // In skip mode, only write some frames.
+                bool shouldWrite = true;
+                if ((globalSkipMode)
+                        && (animFrameNum != fStart)
+                        && (globalSkipCount > 0)
+                        && (globalSkipCount < expandedFrames)) {
+                    if ((animFrameNum % (expandedFrames / globalSkipCount)) != 0) {
+                        shouldWrite = false;
+                    }
+                }
                 if (shouldWrite)
                     writeFrame(globalFrame, svgOut);
                 ++globalFrame;
@@ -2355,7 +2350,7 @@ int main(int argc, char* argv[]) {
             for (int freezeFrameNum = 0; freezeFrameNum < freezeN; ++freezeFrameNum) {
                 // In skip mode, only write the first freeze frame;
                 // all duplicates are skipped but globalFrame still increments.
-                if (!skipMode || freezeFrameNum == 0)
+                if (!globalSkipMode || freezeFrameNum == 0)
                     writeFrame(globalFrame, frozenSvg);
                 ++globalFrame;
             }
@@ -2504,57 +2499,30 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // ── skip-mode-on / skip-mode-off ─────
-        // When skip mode is on, animate segments still run all calculations
-        // (detectChanges, spread-out, arc, generateFrame for every frame) so
-        // the trace file shows complete information, but only three frames are
-        // written per animate segment (first, ~1/3, ~2/3) and only one frame
-        // per freeze segment. globalFrame still counts all frames, so output
-        // frame numbers have gaps but remain globally consistent.
-        if (tok == "skip-mode-on") {
+        // ── skip-count-for-animate ─────
+        // Controls the skip mode as described in the documentation at the
+        // beginning of this program.
+        if (tok == "skip-count-for-animate") {
             flushObjectIds();
             collectingMode = "";
-            skipMode = true;
-            trace   << "skip-mode-on\n";
-            summary << "skip-mode-on\n";
-            // Point to the next token, and repeat the loop.
-            ++tokenIndex;
-            continue;
-        }
-
-        if (tok == "skip-mode-off") {
-            flushObjectIds();
-            collectingMode = "";
-            skipMode = false;
-            trace   << "skip-mode-off\n";
-            summary << "skip-mode-off\n";
-            // Point to the next token, and repeat the loop.
-            ++tokenIndex;
-            continue;
-        }
-
-        // ── full-skip-mode-on / full-skip-mode-off ───────
-        // When full skip mode is on, animate segments still run all calculations
-        // (detectChanges, spread-out, arc, generateFrame for every frame) so
-        // the trace file shows complete information, but SVG files are not written.
-        // globalFrame still counts all frames, so output frame numbers have gaps.
-        if (tok == "full-skip-mode-on") {
-            flushObjectIds();
-            collectingMode = "";
-            fullSkipMode = true;
-            trace   << "full-skip-mode-on\n";
-            summary << "full-skip-mode-on\n";
-            // Point to the next token, and repeat the loop.
-            ++tokenIndex;
-            continue;
-        }
-
-        if (tok == "full-skip-mode-off") {
-            flushObjectIds();
-            collectingMode = "";
-            fullSkipMode = false;
-            trace   << "full-skip-mode-off\n";
-            summary << "full-skip-mode-off\n";
+            // Get optional count
+            globalSkipCount = consumeOptionalInt(tokenIndex);
+            if (globalSkipCount == 0) {
+                // Zero count specifies no SVG files written.
+                globalSkipMode = true;
+                globalFullSkipMode = true;
+            } else if (globalSkipCount < 0) {
+                // No count (or negative count) supplied.
+                globalSkipCount = 100;
+                globalSkipMode = false;
+                globalFullSkipMode = false;
+            } else {
+                // Use supplied count.
+                globalSkipMode = true;
+                globalFullSkipMode = false;
+            }
+            trace   << "skip-count-for-animate " << globalSkipCount << "\n";
+            summary << "skip-count-for-animate " << globalSkipCount << "\n";
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
