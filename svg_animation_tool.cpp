@@ -324,6 +324,7 @@ std::ofstream summary;
 std::ofstream captions;
 std::ofstream narration;
 std::ofstream percentScaleDurationFile;
+std::ofstream captionsDurationsFile;
 
 // Accumulated per-segment info written to the summary file at the end.
 std::string sequenceInfo;
@@ -1768,6 +1769,7 @@ int main(int argc, char* argv[]) {
     const std::string NARRATION_FILE   = "output_narration.txt";
     const std::string AUDIO_LIST_FILE  = "output_audio_narration_file_list.txt";
     const std::string PERCENT_SCALE_DURATION  = "output_percent_scale_duration.txt";
+    const std::string CAPTIONS_DURATION_PLOT  = "output_captions_duration_plot.txt";
 
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <script.txt>\n"
@@ -1834,6 +1836,13 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: cannot open percent scale duration file: " << PERCENT_SCALE_DURATION << "\n";
         return 1;
     }
+
+    captionsDurationsFile.open(CAPTIONS_DURATION_PLOT);
+    if (!captionsDurationsFile) {
+        std::cerr << "Error: cannot open captions duration file: " << CAPTIONS_DURATION_PLOT << "\n";
+        return 1;
+    }
+
 
     // ── Settings header — stdout and summary ───────────────
     summary << "Script: " << scriptPath << "  ("
@@ -2776,18 +2785,36 @@ int main(int argc, char* argv[]) {
     // ── Flush any remaining captions ────────────────
     calculateCaptionTiming(tokenIndex);
 
-   // ── Write captions to VTT file and narration file ──────────────────
-    summary << "\nCaptions and frames:\n";
-     for (const auto& captionSingleEntry : captionEntries) {
+   // ── Write captions to VTT file and narration file and duration plot ────────────
+	int framesPerCaptionAtLongestLength = 200;
+	int framesPerCaptionAtShortestLength = 30;
+	int plottedMinimumSymbols = 5;
+	int plottedMaximumSymbols = 80;
+	int framesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength; // 240
+	int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols; // 75
+    summary << "\nCaption timing:\n";
+    for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
         narration << captionSingleEntry.narrationText << "\n\n";
-        summary << "Caption: " << captionSingleEntry.text << "\n"
-                << "  starts at " << captionSingleEntry.startFrame
+        captionsDurationsFile << captionSingleEntry.text << "\n"
+                << "    from " << captionSingleEntry.startFrame
                 << " (" << frameToVtt(captionSingleEntry.startFrame)
-                << ")  ends at " << captionSingleEntry.endFrame
+                << ")  to " << captionSingleEntry.endFrame
                 << " (" << frameToVtt(captionSingleEntry.endFrame) << ")\n";
+        int captionFrames = captionSingleEntry.endFrame - captionSingleEntry.startFrame;
+        double normalizedCaptionDuration = (captionFrames - framesPerCaptionAtShortestLength) / static_cast<double>(framesSpan);
+        double decimalPlotLength = plottedMinimumSymbols + normalizedCaptionDuration * symbolsSpan;
+        int plotLength = static_cast<int>(std::round(decimalPlotLength    ));
+        plotLength = std::min(std::max(plotLength, plottedMinimumSymbols), plottedMaximumSymbols);
+
+        for (int plotPoint = 0; plotPoint < plotLength; plotPoint++)
+        {
+            captionsDurationsFile << "*";
+        }
+        summary << "\n";
+        captionsDurationsFile << "\n";
     }
 
     // ── Print settings now that directives are all processed ─────────
