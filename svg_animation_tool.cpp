@@ -354,7 +354,7 @@ int globalSkipCount = 100;
 bool globalSkipMode = false;
 bool globalFullSkipMode = false;
 
-// Frames per animate step, can be changed by "animate" or "frames-per-step" directives
+// Frames per animate step, can be changed by "animate" or "frames-per-step" directives.
 int framesPerStep = 30;
 
 // Other global values and objects.
@@ -390,6 +390,14 @@ struct CaptionEntry {
 };
 std::vector<CaptionEntry> captionEntries;
 std::vector<int> captionWordCounts;
+
+// Saved keyframe filenames with starting frame numbers, for caption plot.
+struct SavedKeyframeAndStartFrame {
+    int startFrame;
+    std::string keyframeFilename;
+};
+std::vector<SavedKeyframeAndStartFrame> listKeyframesAndStartFrames;
+std::vector<SavedKeyframeAndStartFrame> compressedKeyframesStartFrames;
 
 
 // ------------------------------------------------
@@ -2307,8 +2315,10 @@ int main(int argc, char* argv[]) {
                 sequenceInfo += "  " + id + "\n";
             sequenceInfo += "\n" + svgB.filename + "\n";
 
+            // Track info needed for summary and plot files.
             lastSvgBFilename = svgB.filename;
             globalRecentSvgFilename = lastSvgBFilename;
+            listKeyframesAndStartFrames.push_back(SavedKeyframeAndStartFrame{ globalFrame, globalRecentSvgFilename });
 
             // Write animation diagnostics — actual observed values at boundaries
             if (!animDiag.empty()) {
@@ -2353,6 +2363,8 @@ int main(int argc, char* argv[]) {
                 summary    << msg << "\n";
                 tokenIndex += 2; continue;
             }
+            globalRecentSvgFilename = lastSvgBFilename;
+            listKeyframesAndStartFrames.push_back(SavedKeyframeAndStartFrame{ globalFrame, globalRecentSvgFilename });
             const SvgFile& current = window.back();
             std::string frozenSvg;
             for (const auto& ln : current.lines) frozenSvg += ln + '\n';
@@ -2370,7 +2382,6 @@ int main(int argc, char* argv[]) {
             sequenceInfo += current.filename + "\n"
                          + "  freeze\n";
             // Freeze has no B keyframe.
-            globalRecentSvgFilename = lastSvgBFilename;
             lastSvgBFilename = "";
             prevWasAnimate = false;
             tokenIndex += 2; continue;
@@ -2785,35 +2796,57 @@ int main(int argc, char* argv[]) {
     // ── Flush any remaining captions ────────────────
     calculateCaptionTiming(tokenIndex);
 
+    // Collapse/shorten list of keyframe filenames with frame numbers to omit
+    // adjacent repeated keyframe filenames.
+    std::string lastFilename = "";
+    compressedKeyframesStartFrames.reserve(listKeyframesAndStartFrames.size());
+    for (const auto& keyframeAndStartFrame : listKeyframesAndStartFrames) {
+        if (keyframeAndStartFrame.keyframeFilename != lastFilename) {
+            compressedKeyframesStartFrames.push_back(keyframeAndStartFrame);
+            lastFilename = keyframeAndStartFrame.keyframeFilename;
+        }
+    }
+
    // ── Write captions to VTT file and narration file and duration plot ────────────
-	int framesPerCaptionAtLongestLength = 200;
-	int framesPerCaptionAtShortestLength = 30;
-	int plottedMinimumSymbols = 5;
-	int plottedMaximumSymbols = 80;
-	int framesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength; // 240
-	int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols; // 75
+    int framesPerCaptionAtLongestLength = 200;
+    int framesPerCaptionAtShortestLength = 30;
+    int plottedMinimumSymbols = 5;
+    int plottedMaximumSymbols = 80;
+    int framesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength; // 240
+    int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols; // 75
     summary << "\nCaption timing:\n";
     for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
         narration << captionSingleEntry.narrationText << "\n\n";
-        captionsDurationsFile << captionSingleEntry.text << "\n"
-                << "    from " << captionSingleEntry.startFrame
-                << " (" << frameToVtt(captionSingleEntry.startFrame)
-                << ")  to " << captionSingleEntry.endFrame
-                << " (" << frameToVtt(captionSingleEntry.endFrame) << ")\n";
+        captionsDurationsFile << captionSingleEntry.text << "\n";
+        // Write a string of asterisks that show duration of this caption.
         int captionFrames = captionSingleEntry.endFrame - captionSingleEntry.startFrame;
         double normalizedCaptionDuration = (captionFrames - framesPerCaptionAtShortestLength) / static_cast<double>(framesSpan);
         double decimalPlotLength = plottedMinimumSymbols + normalizedCaptionDuration * symbolsSpan;
         int plotLength = static_cast<int>(std::round(decimalPlotLength    ));
         plotLength = std::min(std::max(plotLength, plottedMinimumSymbols), plottedMaximumSymbols);
-
+        captionsDurationsFile << "    ";
         for (int plotPoint = 0; plotPoint < plotLength; plotPoint++)
         {
             captionsDurationsFile << "*";
         }
-        summary << "\n";
+        captionsDurationsFile << "\n";
+        // Write only the filenames that were used during the caption-duration frames.
+	    for (const auto& keyframeAndStartFrame : compressedKeyframesStartFrames) {
+            if (keyframeAndStartFrame.startFrame > captionSingleEntry.endFrame) {
+            	break;
+            }
+            if ((keyframeAndStartFrame.startFrame >= captionSingleEntry.startFrame)
+                    && (keyframeAndStartFrame.keyframeFilename != "")) {
+    	        captionsDurationsFile << "    " << keyframeAndStartFrame.keyframeFilename << "\n";
+	        }
+	    }
+        captionsDurationsFile << "        from " << captionSingleEntry.startFrame
+                << " (" << frameToVtt(captionSingleEntry.startFrame)
+                << ")\n        to " << captionSingleEntry.endFrame
+                << " (" << frameToVtt(captionSingleEntry.endFrame) << ")\n";
         captionsDurationsFile << "\n";
     }
 
