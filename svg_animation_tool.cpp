@@ -2701,7 +2701,7 @@ int main(int argc, char* argv[]) {
                         globalFrame = globalFrameBasedOnDesiredTimestamp;
                         summary << "  jumping ahead to frame number " << globalFrameBasedOnDesiredTimestamp << "\n";
                     } else if (framesTooMany > 0) {
-                        std::cout << "WARNING: animation too long at keyframe " << globalRecentSvgFilename << "\n";
+                        std::cout << "WARNING: animation too long at " << globalRecentSvgFilename << "\n";
                         captionsDurationsFile << "WARNING: animation too long at keyframe " << globalRecentSvgFilename << "\n";
                     }
 
@@ -2812,11 +2812,11 @@ int main(int argc, char* argv[]) {
 
    // ── Write captions to VTT file and narration file and duration plot ────────────
     int framesPerCaptionAtLongestLength = 200;
-    int framesPerCaptionAtShortestLength = 30;
+    int framesPerCaptionAtShortestLength = 1;
     int plottedMinimumSymbols = 5;
     int plottedMaximumSymbols = 80;
-    int framesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength; // 240
-    int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols; // 75
+    int plotFramesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength;
+    int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols;
     summary << "\nCaption timing:\n";
     for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
@@ -2826,7 +2826,7 @@ int main(int argc, char* argv[]) {
         captionsDurationsFile << captionSingleEntry.text << "\n";
         // Write a string of asterisks that show duration of this caption.
         int captionFrames = captionSingleEntry.endFrame - captionSingleEntry.startFrame;
-        double normalizedCaptionDuration = (captionFrames - framesPerCaptionAtShortestLength) / static_cast<double>(framesSpan);
+        double normalizedCaptionDuration = (captionFrames - framesPerCaptionAtShortestLength) / static_cast<double>(plotFramesSpan);
         double decimalPlotLength = plottedMinimumSymbols + normalizedCaptionDuration * symbolsSpan;
         int plotLength = static_cast<int>(std::round(decimalPlotLength    ));
         plotLength = std::min(std::max(plotLength, plottedMinimumSymbols), plottedMaximumSymbols);
@@ -2846,10 +2846,14 @@ int main(int argc, char* argv[]) {
     	        captionsDurationsFile << "    " << keyframeAndStartFrame.keyframeFilename << "\n";
 	        }
 	    }
-        captionsDurationsFile << "        from " << captionSingleEntry.startFrame
-                << " (" << frameToVtt(captionSingleEntry.startFrame)
-                << ")\n        to " << captionSingleEntry.endFrame
-                << " (" << frameToVtt(captionSingleEntry.endFrame) << ")\n";
+        captionsDurationsFile << "        "
+                << frameToVtt(captionSingleEntry.startFrame)
+                << " to " 
+                << frameToVtt(captionSingleEntry.endFrame)
+                << " = secs "
+                << std::fixed << std::setprecision(1)
+                << (static_cast<double>(captionFrames) / static_cast<double>(captionsFramesPerSecond))
+                << "\n";
         captionsDurationsFile << "\n";
     }
 
