@@ -1731,6 +1731,8 @@ void calculateCaptionTiming(int currentTokenIndex)
                 << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
         summary << "WARNING: measured duration frames per word is "
                 << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
+        captionsDurationsFile << "WARNING: measured duration frames per word is "
+                << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
     }
 
     // Specify the start and end frame for each caption.
@@ -2700,6 +2702,7 @@ int main(int argc, char* argv[]) {
                         summary << "  jumping ahead to frame number " << globalFrameBasedOnDesiredTimestamp << "\n";
                     } else if (framesTooMany > 0) {
                         std::cout << "WARNING: animation too long at keyframe " << globalRecentSvgFilename << "\n";
+                        captionsDurationsFile << "WARNING: animation too long at keyframe " << globalRecentSvgFilename << "\n";
                     }
 
                     // Calculate and write suggested values for the directive named
