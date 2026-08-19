@@ -176,18 +176,27 @@
  *     captions-frames-per-second N - Frames per second for caption timing
  *                      calculations.  If not specified, default is 30.
  *
- *     sync-captions-here   Synchronizes (matches) the beginning of the next
+ *     sync-captions T  Synchronizes (matches) the beginning of the next
  *                      caption (and the end of the previous caption) to
- *                      the current frame number in the animation.  The
- *                      time delay specified by the seconds-delay-caption-next
- *                      directive is added to this synchronization point.
- *                      When the next sync-captions-here directive occurs,
- *                      the group of captions are displayed, with the timing
- *                      calculated to give each word the same reading time
- *                      duration.
+ *                      an optional supplied timestamp, or to the current
+ *                      frame number if a timestamp is not supplied.  The
+ *                      time T may be decimal seconds (e.g. "3.5") or
+ *                      MM:SS (e.g. "1:30").  When a timestamp is supplied,
+ *                      this directive matches the captions to the timing
+ *                      of an audio track.  When an audio track is not yet
+ *                      available, this directive is designed to match the
+ *                      captions to the surrounding animation directives.
+ *                      In both cases, the time delay specified by the
+ *                      seconds-delay-caption-next directive is added to
+ *                      this synchronization point.  When the next
+ *                      sync-captions directive occurs, the group of
+ *                      captions (since the last sync-captions directive)
+ *                      are given timestamps and durations where each
+ *                      word in each of the captions is given the same
+ *                      duration, which is the expected reading time.
  *
  *     seconds-delay-caption-next   Specifies the time delay that is added
- *                      when the sync-captions-here directive is used.
+ *                      when the sync-captions directive is used.
  *                      This time, in decimal seconds, is stored in the
  *                      secondsDelayCaptionNext variable.
  * 
@@ -1670,8 +1679,9 @@ std::string stripBracketedNotes(const std::string& text) {
 // computed independently based on its own word count and the number of
 // frames for all the captions in this group.  The ending time of one
 // caption equals the starting time of the next caption.  If no captions
-// have accumatled, do nothing.
-void calculateCaptionTiming(int currentTokenIndex)
+// have accumatled, do nothing.  The captionEndFrame will be the frame
+// number at which the next group of captions begin.
+void calculateCaptionTiming(int currentTokenIndex, int captionEndFrame)
 {
     // Use the frame number at which the previous captions ended
     // as the starting frame number for these captions.
@@ -1688,7 +1698,7 @@ void calculateCaptionTiming(int currentTokenIndex)
 
     // Count the number of accumulated captions.  Use the token pointer to
     // identify the current location within the script.
-    // Also count the number of words since the previous sync-captions-here
+    // Also count the number of words since the previous sync-captions
     // directive.  Do not include words in square brackets.
     int numberOfAccumCaptions = 0;
     int indexToCaptions = indexToFirstCaption;
@@ -1717,8 +1727,8 @@ void calculateCaptionTiming(int currentTokenIndex)
     // caption based on the word count.
     // If no frames have elapsed, allow one frame per word anyway.
     int durationFramesPerWord;
-    if (globalFrame > captionStartFrame) {
-        durationFramesPerWord = static_cast<int>((double)(globalFrame - captionStartFrame)
+    if (captionEndFrame > captionStartFrame) {
+        durationFramesPerWord = static_cast<int>((double)(captionEndFrame - captionStartFrame)
                 / (double)wordsSincePreviousCaptionSync);
     } else {
         durationFramesPerWord = 1;
@@ -1738,10 +1748,9 @@ void calculateCaptionTiming(int currentTokenIndex)
     // Specify the start and end frame for each caption.
     // If a caption is empty, count it as one word anyway.
     // Specify the end frame number for the last caption to be based on the 
-    // globalFrame count (to sync it with animation) and add the delay
+    // captionEndFrame count (to sync it with animation) and add the delay
     // specified by the directive named seconds-delay-caption-next.
     indexToCaptions = globalCaptionQueueIndex;
-    int captionEndFrame;
     for (int indexOffsetToCurrentCaption = 0;
             indexOffsetToCurrentCaption < numberOfAccumCaptions;
             indexOffsetToCurrentCaption++) {
@@ -1753,7 +1762,7 @@ void calculateCaptionTiming(int currentTokenIndex)
         const std::string& rawCaptionText = captionQueue[indexToCaptions];
         std::string strippedCaptionText = stripBracketedNotes(rawCaptionText);
         if (indexOffsetToCurrentCaption == numberOfAccumCaptions - 1) {
-            captionEndFrame = globalFrame + (secondsDelayCaptionNext * captionsFramesPerSecond);
+            captionEndFrame = captionEndFrame + (secondsDelayCaptionNext * captionsFramesPerSecond);
         }
         captionEntries.push_back({captionStartFrame, captionEndFrame, strippedCaptionText, rawCaptionText});
         summary << "Caption from " << captionStartFrame << " to " << captionEndFrame << " is: "
@@ -2583,13 +2592,46 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        // ── sync-captions-here ──────
-        if (tok == "sync-captions-here") {
+        // ── sync-captions T ──────
+        if (tok == "sync-captions") {
             flushObjectIds();
             collectingMode = "";
-            trace   << "sync-captions-here\n";
-            summary << "sync-captions-here\n";
-            calculateCaptionTiming(tokenIndex);
+            // Get possible optional timestamp after 'sync-captions'
+            int desiredFrameNumber = -1;
+            double desiredSecs = -1.0;
+            const std::string& tstr = scriptTokens[tokenIndex + 1];
+            if (tokenIndex + 1 < scriptTokens.size()) {
+                // TODO: create function to get optional timestamp because this code
+                // also needed elsewhere
+                // Try MM:SS format first
+                auto colon = tstr.find(':');
+                if (colon != std::string::npos) {
+                    try {
+                        int mins = std::stoi(tstr.substr(0, colon));
+                        double secs = std::stod(tstr.substr(colon + 1));
+                        desiredSecs = (mins * 60.0) + secs;
+                    } catch (...) {}
+                } else {
+                    // Try plain seconds (int or decimal)
+                    try { desiredSecs = std::stod(tstr); } catch (...) {}
+                }
+            }
+            // If timestamp was supplied, convert desired seconds into a
+            // frame number, and point to the next token to consume the
+            // timestamp token.
+            // If timestamp was not supplied, sync to current frame number.
+            if (desiredSecs > 0.0) {
+                desiredFrameNumber = static_cast<int>(desiredSecs * (double)captionsFramesPerSecond);
+                ++tokenIndex;
+                trace   << "sync-captions to " << tstr << " = " << desiredSecs << " seconds\n";
+                summary << "sync-captions to " << tstr << " = " << desiredSecs << " seconds\n";
+            } else {
+                desiredFrameNumber = globalFrame;
+                trace   << "sync-captions to current frame " << desiredFrameNumber << "\n";
+                summary << "sync-captions to current frame " << desiredFrameNumber << "\n";
+            }
+            // Output the captions collected since the previous sync-captions directive.
+            calculateCaptionTiming(tokenIndex, desiredFrameNumber);
             // Point to the next token, and repeat the loop.
             ++tokenIndex;
             continue;
@@ -2626,10 +2668,9 @@ int main(int argc, char* argv[]) {
         if (tok == "desired-timestamp") {
             flushObjectIds();
             collectingMode = "";
+            const std::string& tstr = scriptTokens[tokenIndex + 1];
             if (tokenIndex + 1 < scriptTokens.size()) {
-                const std::string& tstr = scriptTokens[tokenIndex + 1];
                 double desiredSecs = -1.0;
-
                 // Try MM:SS format first
                 auto colon = tstr.find(':');
                 if (colon != std::string::npos) {
@@ -2734,11 +2775,14 @@ int main(int argc, char* argv[]) {
             } else {
                 std::cout << "WARNING: desired-timestamp requires a time value — ignored.\n";
             }
+
+            // Update pointers for the transition to the next caption.
             globalFrameActualAtPreviousDesiredTimestamp = globalFrame;
             globalScaledFramesSinceTimestamp = 0;
             globalFrameBasedOnPreviousDesiredTimestamp = globalFrameBasedOnDesiredTimestamp;
-            // Point to the next token, and repeat the loop.
+            // Point to the next script token.
             ++tokenIndex;
+            // Repeat the loop to handle the next caption.
             continue;
         }
 
@@ -2797,7 +2841,7 @@ int main(int argc, char* argv[]) {
     flushObjectIds();
 
     // ── Flush any remaining captions ────────────────
-    calculateCaptionTiming(tokenIndex);
+    calculateCaptionTiming(tokenIndex, globalFrame);
 
     // Collapse/shorten list of keyframe filenames with frame numbers to omit
     // adjacent repeated keyframe filenames.
@@ -2818,6 +2862,7 @@ int main(int argc, char* argv[]) {
     int plotFramesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength;
     int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols;
     summary << "\nCaption timing:\n";
+    captionsDurationsFile << "\nCaption timing:\n\n";
     for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
