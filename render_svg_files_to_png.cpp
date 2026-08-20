@@ -48,9 +48,13 @@
 
 //--------------------------------------------------
 
-//  Specify settings.
+//  Output frame rate can be supplied as optional command-line parameter.
+//  Default is 30 frames per second.
+int global_output_frame_rate = 30;
+
+//  Specify input frame rate.
 const int global_input_frame_rate = 30;
-const int global_output_frame_rate = 3;
+
 bool global_use_low_resolution = false;
 bool global_have_png_frames_without_captions = false;
 bool global_have_captions = false;
@@ -287,16 +291,43 @@ bool combine_animation_and_caption_frame( ) {
 
 //--------------------------------------------------
 
+//  Begin here.
 int main(int argc, char* argv[]) {
-    for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "lowres") {
+
+    //  Get optional command-line parameters.
+    for (int pointer_cli_parameter = 1; pointer_cli_parameter < argc; ++pointer_cli_parameter) {
+
+        //  Check for optional "lowres" mode.
+        if (std::string(argv[pointer_cli_parameter]) == "lowres") {
             global_use_low_resolution = true;
-            break;
+            continue;
         }
+
+        //  Check for optional integer that specifies output frame rate.
+        //  Ignore if less than 3.
+        int possible_integer;
+        try {
+            std::string input_parameter = argv[pointer_cli_parameter];
+            std::size_t position = 0;
+            possible_integer = std::stoi(input_parameter, &position);
+            if (position == input_parameter.length()) {
+                global_output_frame_rate = possible_integer;
+            } else {
+               throw std::invalid_argument("invalid integer");
+            }
+        } catch (const std::exception&) {
+            trace << "command-line parameter " << possible_integer << " not recognized\n";
+        }
+
     }
 
     trace << "Input frame rate is " << global_input_frame_rate << std::endl;
     trace << "Output frame rate is " << global_output_frame_rate << std::endl;
+
+    if (global_output_frame_rate < 3) {
+        trace << "Output frame rate " << global_output_frame_rate << " is less than 3 so exiting" << std::endl;
+        exit(1);
+    }
 
     //  Point to, and count, the input SVG files.
     //  They are in two directories.
@@ -566,5 +597,6 @@ int main(int argc, char* argv[]) {
 
     trace << "Done" << std::endl;
     std::cout << "\n" << "Done rendering" << std::endl;
+    std::cout << "\n" << "Details in file output_trace_render.txt" << std::endl;
     return 0;
 }
