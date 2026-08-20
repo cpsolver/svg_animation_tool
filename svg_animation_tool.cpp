@@ -333,7 +333,7 @@ std::ofstream summary;
 std::ofstream captions;
 std::ofstream narration;
 std::ofstream percentScaleDurationFile;
-std::ofstream captionsDurationsFile;
+std::ofstream captionsDurationsPlotFile;
 
 // Accumulated per-segment info written to the summary file at the end.
 std::string sequenceInfo;
@@ -1741,7 +1741,7 @@ void calculateCaptionTiming(int currentTokenIndex, int captionEndFrame)
                 << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
         summary << "WARNING: measured duration frames per word is "
                 << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
-        captionsDurationsFile << "WARNING: measured duration frames per word is "
+        captionsDurationsPlotFile << "WARNING: measured duration frames per word is "
                 << durationFramesPerWord << " near keyframe " << globalRecentSvgFilename << "\n";
     }
 
@@ -1856,8 +1856,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    captionsDurationsFile.open(CAPTIONS_DURATION_PLOT);
-    if (!captionsDurationsFile) {
+    captionsDurationsPlotFile.open(CAPTIONS_DURATION_PLOT);
+    if (!captionsDurationsPlotFile) {
         std::cerr << "Error: cannot open captions duration file: " << CAPTIONS_DURATION_PLOT << "\n";
         return 1;
     }
@@ -2328,7 +2328,9 @@ int main(int argc, char* argv[]) {
 
             // Track info needed for summary and plot files.
             lastSvgBFilename = svgB.filename;
-            globalRecentSvgFilename = lastSvgBFilename;
+            if (lastSvgBFilename != "") {
+                globalRecentSvgFilename = lastSvgBFilename;
+            }
             listKeyframesAndStartFrames.push_back(SavedKeyframeAndStartFrame{ globalFrame, globalRecentSvgFilename });
 
             // Write animation diagnostics — actual observed values at boundaries
@@ -2374,7 +2376,9 @@ int main(int argc, char* argv[]) {
                 summary    << msg << "\n";
                 tokenIndex += 2; continue;
             }
-            globalRecentSvgFilename = lastSvgBFilename;
+            if (lastSvgBFilename != "") {
+                globalRecentSvgFilename = lastSvgBFilename;
+            }
             listKeyframesAndStartFrames.push_back(SavedKeyframeAndStartFrame{ globalFrame, globalRecentSvgFilename });
             const SvgFile& current = window.back();
             std::string frozenSvg;
@@ -2741,9 +2745,16 @@ int main(int argc, char* argv[]) {
                     if (framesTooFew > 0) {
                         globalFrame = globalFrameBasedOnDesiredTimestamp;
                         summary << "  jumping ahead to frame number " << globalFrameBasedOnDesiredTimestamp << "\n";
+                        captionsDurationsPlotFile << "    at " << globalRecentSvgFilename
+                                << " jumped ahead " << framesTooFew
+                                << " frames = secs " << (framesTooFew / captionsFramesPerSecond) << "\n";
                     } else if (framesTooMany > 0) {
                         std::cout << "WARNING: animation too long at " << globalRecentSvgFilename << "\n";
-                        captionsDurationsFile << "WARNING: animation too long at keyframe " << globalRecentSvgFilename << "\n";
+                        captionsDurationsPlotFile << "WARNING: animation too long at "
+                                << globalRecentSvgFilename << "\n";
+                        captionsDurationsPlotFile << "    at " << globalRecentSvgFilename
+                                << " too many frames " << framesTooMany
+                                << " = secs " << (framesTooMany / captionsFramesPerSecond) << "\n";
                     }
 
                     // Calculate and write suggested values for the directive named
@@ -2862,36 +2873,36 @@ int main(int argc, char* argv[]) {
     int plotFramesSpan = framesPerCaptionAtLongestLength - framesPerCaptionAtShortestLength;
     int symbolsSpan = plottedMaximumSymbols - plottedMinimumSymbols;
     summary << "\nCaption timing:\n";
-    captionsDurationsFile << "\nCaption timing:\n\n";
+    captionsDurationsPlotFile << "\nCaption timing:\n\n";
     for (const auto& captionSingleEntry : captionEntries) {
         captions << frameToVtt(captionSingleEntry.startFrame) << " --> "
                  << frameToVtt(captionSingleEntry.endFrame) << "\n"
                  << captionSingleEntry.text << "\n\n";
         narration << captionSingleEntry.narrationText << "\n\n";
-        captionsDurationsFile << captionSingleEntry.text << "\n";
+        captionsDurationsPlotFile << captionSingleEntry.text << "\n";
         // Write a string of asterisks that show duration of this caption.
         int captionFrames = captionSingleEntry.endFrame - captionSingleEntry.startFrame;
         double normalizedCaptionDuration = (captionFrames - framesPerCaptionAtShortestLength) / static_cast<double>(plotFramesSpan);
         double decimalPlotLength = plottedMinimumSymbols + normalizedCaptionDuration * symbolsSpan;
         int plotLength = static_cast<int>(std::round(decimalPlotLength    ));
         plotLength = std::min(std::max(plotLength, plottedMinimumSymbols), plottedMaximumSymbols);
-        captionsDurationsFile << "    ";
+        captionsDurationsPlotFile << "    ";
         for (int plotPoint = 0; plotPoint < plotLength; plotPoint++)
         {
-            captionsDurationsFile << "*";
+            captionsDurationsPlotFile << "*";
         }
-        captionsDurationsFile << "\n";
+        captionsDurationsPlotFile << "\n";
         // Write only the filenames that were used during the caption-duration frames.
-	    for (const auto& keyframeAndStartFrame : compressedKeyframesStartFrames) {
+        for (const auto& keyframeAndStartFrame : compressedKeyframesStartFrames) {
             if (keyframeAndStartFrame.startFrame > captionSingleEntry.endFrame) {
-            	break;
+                break;
             }
             if ((keyframeAndStartFrame.startFrame >= captionSingleEntry.startFrame)
                     && (keyframeAndStartFrame.keyframeFilename != "")) {
-    	        captionsDurationsFile << "    " << keyframeAndStartFrame.keyframeFilename << "\n";
-	        }
-	    }
-        captionsDurationsFile << "        "
+                captionsDurationsPlotFile << "    " << keyframeAndStartFrame.keyframeFilename << "\n";
+            }
+        }
+        captionsDurationsPlotFile << "        "
                 << frameToVtt(captionSingleEntry.startFrame)
                 << " to " 
                 << frameToVtt(captionSingleEntry.endFrame)
@@ -2899,7 +2910,7 @@ int main(int argc, char* argv[]) {
                 << std::fixed << std::setprecision(1)
                 << (static_cast<double>(captionFrames) / static_cast<double>(captionsFramesPerSecond))
                 << "\n";
-        captionsDurationsFile << "\n";
+        captionsDurationsPlotFile << "\n";
     }
 
     // ── Print settings now that directives are all processed ─────────
