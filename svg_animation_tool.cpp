@@ -366,6 +366,9 @@ bool globalFullSkipMode = false;
 // Frames per animate step, can be changed by "animate" or "frames-per-step" directives.
 int framesPerStep = 30;
 
+// Possible future directive: object-id-to-trace
+std::string global_object_id_to_trace = "xyz";
+
 // Other global values and objects.
 
 // Global parsed script text blocks (prefix -> normalized text)
@@ -1145,15 +1148,15 @@ void detectChanges(
             changedIds.insert(id);
 
             if (firstForId) {
-                // trace << "  id=\"" << id << "\"\n";
+                trace << "  id=\"" << id << "\"\n";
                 firstForId = false;
             }
-            // trace << "    attr=" << nvA.attrName
-            //       << "  [" << nvA.valueIndex << "]"
-            //       << "  lineA=" << nvA.lineNum
-            //       << "  lineB=" << nvB.lineNum
-            //       << "  A=" << nvA.value
-            //       << "  B=" << nvB.value << "\n";
+            trace << "    attr=" << nvA.attrName
+                  << "  [" << nvA.valueIndex << "]"
+                  << "  lineA=" << nvA.lineNum
+                  << "  lineB=" << nvB.lineNum
+                  << "  A=" << nvA.value
+                  << "  B=" << nvB.value << "\n";
         }
     }
 
