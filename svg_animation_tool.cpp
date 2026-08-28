@@ -249,7 +249,15 @@
  *                      to generate SVG files for just limited portions.
  *                      If the skip count is large, such as 100, and it
  *                      exceeds the duration count in the longest animate
- *                      directive, all SVG file are generated.
+ *                      directive, all SVG files are generated.  If any
+ *                      skip count is specified, just one freeze frame file
+ *                      is created, and the frame number skips ahead without
+ *                      creating multiple copies of the same SVG file.  The
+ *                      render_svg_files_to_png.cpp program handles gaps in
+ *                      in the frame numbers.  If the skip-count-for-animate
+ *                      directive is not used anywhere in the script, every
+ *                      frame is written as a separate file, even when there
+ *                      are multiple copies of the same SVG file.
  * 
  *
  * -- Output files ------------------------------------------------
