@@ -2,6 +2,7 @@
 //  -----------------------
 //
 //  Modifies timestamps in script.
+//  Can edit to modify either desired-timestamp or sync-captions directives.
 //
 //  Comments below describe what the current
 //  version of this code does.
@@ -42,12 +43,13 @@ int main() {
     std::string revised_timestamp_word;
 
     while (std::getline(input_file, current_line)) {
-        if (current_line.rfind("desired-timestamp", 0) == 0) {
+//        if (current_line.rfind("desired-timestamp", 0) == 0) {
+        if (current_line.rfind("sync-captions", 0) == 0) {
 
             // Get the second space-delimited word
             std::istringstream iss(current_line);
             std::string first;
-            iss >> first;            // "desired-timestamp"
+            iss >> first;            // "desired-timestamp" or "sync-captions"
             iss >> timestamp_word; // e.g., "23.7" or "4:23.7" or "1:23:56.7"
 
             // Supported forms:
@@ -105,9 +107,13 @@ int main() {
                 parseSecondsPart(parts[2]);
             }
 
-            // Convert to tenths-of-seconds, add 2 seconds, which is 20 tenths of a second
+            // Convert to tenths-of-seconds
             int total_tenths = (h * 3600 + m * 60 + sec_whole) * 10 + sec_tenths;
-            total_tenths += 20;
+
+            // Subtract 1 second, which is -10 tenths of a second
+            total_tenths += -10;
+            // Add 2 seconds, which is 20 tenths of a second
+            // total_tenths += 20;
 
             // Convert back using tenths
             int total_seconds = total_tenths / 10;   // whole seconds
@@ -118,8 +124,6 @@ int main() {
             int rem = total_seconds % 3600;
             m = rem / 60;
             sec_whole = rem % 60;
-
-// TODO: modified, not yet tested!!
 
             // Combine hours, colon, minutes, colon, seconds, period, tenths
             std::ostringstream out_stream;
@@ -138,7 +142,8 @@ int main() {
             }
 
             // Write revised line.
-            output_file << "desired-timestamp " << revised_timestamp_word << "\n";
+//            output_file << "desired-timestamp " << revised_timestamp_word << "\n";
+            output_file << "sync-captions " << revised_timestamp_word << "\n";
         } else {
             output_file << current_line << "\n";
         }
