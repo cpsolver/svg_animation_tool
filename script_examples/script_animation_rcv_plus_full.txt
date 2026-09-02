@@ -1,0 +1,2873 @@
+title-begin
+Ranked Choice Voting Plus Defeats the Blocking Tactic
+----
+
+
+
+skip-count-for-animate 99
+
+typical-skip-count-numbers-begin
+skip-count-for-animate 0
+skip-count-for-animate 5
+skip-count-for-animate 9
+skip-count-for-animate 99
+----
+
+reminders-about-skip-count-numbers-begin
+0 (zero) omits all SVG files, but does all calculations and writes output files.
+5 is a useful number for developing animation and timing.
+9 provides greater resolution of animation motions.
+99 is typical for final rendering.
+Reminder: Large number omits duplicate SVG files during freeze segments.
+If no number specified, writes duplicate SVG files during freeze segments,
+which wastes time and resources if using render_svg_files_to_png program.
+----
+
+
+
+frames-per-step 12
+
+captions-frames-per-second 30
+
+
+
+useful-grep-commands-begin
+grep -E 'keyframe_' -A 0 -B 0 -n script_animation_rcv_plus_full.txt > output_script_grep_matches.txt
+grep -E "(keyframe_)|(animate)|(freeze)" -A 0 -B 0 -n script_animation_rcv_plus_full.txt > output_script_grep_matches.txt
+grep -E "(desired-timestamp)|(animate)|(freeze)" -A 1 -B 1 -n script_animation_rcv_plus_full.txt > output_script_grep_matches.txt
+grep -E "(keyframe_)|(sync-captions )|(desired-timestamp)|(animation-duration)" -A 0 -B 0 -n script_animation_filename.txt > output_script_grep_matches.txt
+...
+grep -E 'id="portrait_palin"' -A 9 -B 2 -n keyframe_*.svg > output_script_grep_matches.txt
+grep -E 'transform="matrix' -A 0 -B 0 -n output_script_grep_matches.txt > output_script_grep_matches_secondary.txt
+then ask AI to group lines by last (y-axis) or next-to-last (x-axis) matrix number
+----
+
+
+useful-file-search-string-begin
+search:///home/whatever/animation_folder?recursive=0&show_hidden=0&name_regex=keyframe_.*_bumped.svg
+----
+
+
+
+bash-code-to-generate-animation-video-begin
+rm ./frames_svg/frame_*.svg
+rm ./caption_frames_svg/caption_frame_*.svg
+rm ./frames_png/frame_*.png
+rm ./frames_with_captions_png/frame_*.png
+g++ -std=c++17 -O2 -o svg_animation_tool $TOOL_SOURCE_DIR/svg_animation_tool.cpp
+g++ -std=c++17 -o render_svg_files_to_png $TOOL_SOURCE_DIR/render_svg_files_to_png.cpp
+g++ -std=c++17 -o captions_convert_vtt_to_svg $TOOL_SOURCE_DIR/captions_convert_vtt_to_svg.cpp
+./captions_convert_vtt_to_svg
+./svg_animation_tool script_animation_rcv_plus_full.txt
+./render_svg_files_to_png 30
+ffmpeg -y -framerate 30 -i frames_with_captions_png/frame_%05d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_with_captions_silent.mp4
+ffmpeg -y -framerate 30 -i frames_png/frame_%05d.png -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium generated_videos/animation_without_captions_silent.mp4
+ffmpeg -y  -i generated_videos/animation_with_captions_silent.mp4  -i edited_narration_audio.wav  -f webvtt -i output_captions_and_timing.vtt  -map 0:v:0  -map 1:a:0 -map 2:0  -c:v copy  -c:a aac -b:a 192k  -c:s mov_text  -metadata:s:s:0 language=eng  -metadata:s:s:0 title="English"  generated_videos/animation_full_with_captions.mp4
+ffmpeg -y  -i generated_videos/animation_without_captions_silent.mp4  -i edited_narration_audio.wav  -f webvtt -i output_captions_and_timing.vtt  -map 0:v:0  -map 1:a:0 -map 2:0  -c:v copy  -c:a aac -b:a 192k  -c:s mov_text  -metadata:s:s:0 language=eng  -metadata:s:s:0 title="English"  generated_videos/animation_full_without_captions.mp4
+ffprobe generated_videos/animation_full_without_captions.mp4
+----
+
+
+
+audio-files-begin
+voice_narration/rcvp_narr__you_might__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__and_you_will_learn__6.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__a_ranked_choice__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__the_basic_version__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__to_learn_about__4.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__it_was_between__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__these_ballots__4.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__both_the_basic__2.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__the_basic_version_was_used__2.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__this_simple__4.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__lets_do_deeper__2.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__heres_the_one__5.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__next_we_stack__5.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__finally_we_look__3.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__notice_palin__4.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__also_notice_begich__8.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__yet_basic_version__6.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__the_plus_version__3.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__if_anyone_claims__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__the_deep_rooted__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__if_used_in_presidential__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__if_any_third_party__9.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__any_voter_who_dislikes__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__heres_why_reduce_money__2.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__two_thousand_four__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__largest_amounts_money__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__additional_money__6.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__yet_more_money__4.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__the_television_ads__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__vote_splitting__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__soon_after__3.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__this_tactic_of_blocking__6.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__if_candidate_in_each__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__these_reasons__4.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__a_very_clear_example__10.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__by_exploiting_limit__4.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__during_general_election__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__using_obama__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__twenty_twenty_general__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__if_instead__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__of_course_these__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__congressional_elections__9.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__republican_primary__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__suppose_republican__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__during_next_election__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__this_version_of_blocking__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__our_general__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__long_overdue__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__blocking_tactic_exploits__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__we_can_defeat__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__its_understandable__1.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__those_critics__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__to_reach__4.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__then_we_majority__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__please_tell_other_2.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__makes_this_possible__2.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__narration_by__4.mp3
+audio_silence_quarter_second.mp3
+voice_narration/rcvp_narr__video_by_fobes__1.mp3
+voice_narration/rcvp_narr__at_votefair__1.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+audio_silence_quarter_second.mp3
+----
+
+
+phonetic-spelling-begin
+/pell TOE lah/
+/BEG itch/
+/PAY lin/
+----
+
+
+code-to-generate-short-audio-silence-file-begin
+ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t 0.5 -q:a 9 audio_silence_half_second.mp3
+----
+
+
+code-to-generate-full-audio-file-begin
+ffmpeg -f concat -safe 0 -i output_audio_narration_file_list.txt -c copy output_narration_audio.mp3
+----
+
+
+
+
+
+keyframe_opening_title.svg
+
+freeze 10
+
+caption-begin
+[emphasis] You might have heard criticisms
+----
+
+keyframe_opening_title.svg
+
+freeze 30
+
+keyframe_opening_title_split.svg
+
+title-size-notes-begin
+plus enlarged:
+matrix(1.5160414,0,0,1.5160456,-1056.961,82.538046)
+matrix(1.8716561,0,0,1.8716612,-1500.7401,80.37453)
+----
+
+animate 45
+
+caption-begin
+about [emphasis] ranked choice voting.
+----
+
+keyframe_opening_title_plus_enlarged.svg
+
+animate 30
+
+caption-begin
+Here you'll learn why the [emphasis] plus version
+----
+
+keyframe_opening_title_split.svg
+
+animate 30
+
+caption-begin
+of ranked choice voting
+----
+
+keyframe_opening_title_better.svg
+
+animate 30
+
+keyframe_opening_title_better_enlarged.svg
+
+animate 30
+
+freeze 1
+
+keyframe_opening_title_better.svg
+
+animate 30
+
+freeze 10
+
+caption-begin
+overcomes the two disadvantages
+----
+
+keyframe_opening_title_better_enlarged.svg
+
+animate 20
+
+freeze 10
+
+caption-begin
+of the [emphasis] basic version of
+----
+
+caption-begin
+ranked choice voting.
+----
+
+keyframe_opening_title_better.svg
+
+animate 20
+
+freeze 10
+
+keyframe_opening_title_split.svg
+
+animate 20
+
+desired-timestamp 12.0
+
+sync-captions 12
+
+keyframe_opening_title_before_money.svg
+
+animate 20
+
+freeze 1
+
+caption-begin
+And you will learn
+----
+
+caption-begin
+how ranked choice voting [emphasis] plus
+----
+
+caption-begin
+will [emphasis] defeat the [emphasis] blocking tactic,
+----
+
+keyframe_opening_title_money.svg
+
+object-ids
+dollar_bill_clone_1
+dollar_bill_clone_2
+dollar_bill_clone_3
+dollar_bill_clone_4
+dollar_bill_clone_5
+
+arc-height 1600
+spread-out-start-top-end-top
+spread-out 10
+
+reminder-begin
+BELOW, NO NEED TO REPEAT DOLLAR BILL ARC AND SPREAD DIRECTIVES
+----
+
+reminder-begin
+Number after animate directive does not include extra frames added by spread directives
+----
+
+animate 10
+
+keyframe_opening_title_money_bounced.svg
+
+animate 10
+
+keyframe_opening_title_money.svg
+
+freeze 30
+
+keyframe_opening_title_money_bounced.svg
+
+animate 10
+
+keyframe_opening_title_money.svg
+
+freeze 10
+
+caption-begin
+which is what wealthy campaign contributors
+----
+
+caption-begin
+use to [emphasis] block [emphasis] reform-minded candidates
+----
+
+caption-begin
+from reaching our [emphasis] general elections.
+----
+
+freeze 1
+
+desired-timestamp 23.0
+
+keyframe_opening_title_ending.svg
+
+animate 20
+
+keyframe_mark_empty.svg
+
+freeze 1
+
+animate 20
+
+keyframe_mark_title_gone.svg
+
+animate 30
+
+sync-captions 24.4
+
+caption-begin
+A ranked choice ballot
+----
+
+caption-begin
+asks [emphasis] you as a voter
+----
+
+keyframe_mark_title_only.svg
+
+animate 10
+
+freeze 10
+
+caption-begin
+to mark your [emphasis] first choice
+----
+
+keyframe_mark_first.svg
+
+animate 10
+
+keyframe_mark_title_only.svg
+
+animate 10
+
+keyframe_mark_first.svg
+
+animate 10
+
+freeze 10
+
+caption-begin
+and your [emphasis] second choice
+----
+
+keyframe_mark_second.svg
+
+animate 20
+
+keyframe_mark_second_gone.svg
+
+animate 10
+
+keyframe_mark_second.svg
+
+animate 10
+
+keyframe_mark_both.svg
+
+animate 10
+
+caption-begin
+when there are three candidates.
+----
+
+freeze 10
+
+desired-timestamp 32.0
+
+keyframe_mark_title_gone.svg
+
+animate 10
+
+keyframe_overvote_begin.svg
+
+freeze 1
+
+reminder-begin
+DO NOT ANIMATE HERE
+----
+
+freeze 1
+
+sync-captions 32.4
+
+keyframe_overvote_shift_ballots_left.svg
+
+animate 30
+
+caption-begin
+The [emphasis] basic version of
+----
+
+freeze 2
+
+caption-begin
+ranked choice voting
+----
+
+caption-begin
+would toss out this ballot
+----
+
+caption-begin
+as uncountable because the voter
+----
+
+keyframe_overvote.svg
+
+animate 20
+
+freeze 40
+
+caption-begin
+expressed an [emphasis] equal preference
+----
+
+keyframe_overvote_red_x.svg
+
+animate 12
+
+keyframe_overvote.svg
+
+animate 10
+
+keyframe_overvote_red_x.svg
+
+animate 12
+
+freeze 40
+
+caption-begin
+between two candidates.
+----
+
+caption-begin
+In contrast, ranked choice voting [emphasis] plus
+----
+
+desired-timestamp 43
+
+keyframe_overvote_ok.svg
+
+animate 12
+
+keyframe_overvote_red_x.svg
+
+animate 10
+
+keyframe_overvote_ok.svg
+
+animate 12
+
+freeze 30
+
+caption-begin
+counts this equal-preference pattern
+----
+
+caption-begin
+in a way that closely matches
+----
+
+caption-begin
+what the voter intended.
+----
+
+desired-timestamp 48
+
+sync-captions 51.4
+
+keyframe_overvote_almost_end.svg
+
+animate 30
+
+caption-begin
+To learn about [emphasis] another advantage
+----
+
+keyframe_overvote_end.svg
+
+animate 30
+
+caption-begin
+of the [emphasis] plus version,
+----
+
+caption-begin
+let's look at a special
+----
+
+caption-begin
+congressional election in Alaska.
+----
+
+keyframe_intro_begin.svg
+
+freeze 1
+
+reminder-begin
+DO NOT ANIMATE HERE
+----
+
+freeze 1
+
+caption-begin
+It was between candidates named
+----
+
+freeze 10
+
+desired-timestamp 57
+
+keyframe_intro_peltola.svg
+
+animate 22
+
+freeze 1
+
+sync-captions 59.4
+
+caption-begin
+Peltola, [slight pause] Begich, [slight pause] and Palin.
+----
+
+keyframe_intro_begich.svg
+
+animate 22
+
+freeze 1
+
+keyframe_intro_palin.svg
+
+animate 22
+
+freeze 1
+
+keyframe_intro_begin.svg
+
+animate 20
+
+keyframe_intro_ballot_gone.svg
+
+animate 20
+
+keyframe_ballots_hidden_begin.svg
+
+animate 10
+
+reminder-begin
+THESE BALLOTS FROM LEFT
+----
+
+object-ids
+group_ballot_b1 group_ballot_b2 group_ballot_b3 group_ballot_b4 group_ballot_b5 group_ballot_b6 group_ballot_b7 group_ballot_b8 group_ballot_b9 group_ballot_b10 group_ballot_b11 group_ballot_b12 group_ballot_b13 group_ballot_b14 group_ballot_b15 group_ballot_b17 group_ballot_b19
+
+arc-height 0
+spread-out-start-right-end-left
+spread-out 1
+
+reminder-begin
+THESE BALLOTS FROM RIGHT
+----
+
+object-ids
+group_ballot_b16 group_ballot_b18 group_ballot_b21 group_ballot_b22 group_ballot_b23 group_ballot_b24 group_ballot_b25 group_ballot_b26 group_ballot_b27 group_ballot_b28 group_ballot_b29 group_ballot_b30 group_ballot_b31 group_ballot_b32 group_ballot_b33 group_ballot_b34 group_ballot_b35
+
+arc-height 0
+spread-out-start-left-end-right
+spread-out 1
+
+keyframe_ballots_hidden.svg
+
+animate 2
+
+keyframe_ballots_grid_almost.svg
+
+animate 2
+
+keyframe_ballots_grid.svg
+
+animate 40
+
+sync-captions 1:02.4
+
+caption-begin
+These ballots represent
+----
+
+caption-begin
+what happened in that congressional election. [pause]
+----
+
+sync-captions 1:07.4
+
+caption-begin
+Both the [emphasis] basic and [emphasis] plus versions
+----
+
+caption-begin
+look at which candidate
+----
+
+caption-begin
+is ranked [emphasis] highest on each ballot.
+----
+
+desired-timestamp 1:09
+
+keyframe_starting_wiggle_cw.svg
+
+animate 4
+
+keyframe_starting_wiggle_ccw.svg
+
+animate 7
+
+keyframe_starting_wiggle_cw.svg
+
+animate 7
+
+keyframe_ballots_grid.svg
+
+animate 2
+
+freeze 1
+
+keyframe_irv_begin.svg
+
+animate 20
+
+freeze 1
+
+sync-captions 1:12.4
+
+caption-begin
+The [emphasis] basic version of ranked choice voting
+----
+
+caption-begin
+was used in that election.
+----
+
+desired-timestamp 1:12
+
+caption-begin
+It assumed the [emphasis] smallest ballot stack
+----
+
+caption-begin
+indicated the [emphasis] least-popular candidate.
+----
+
+keyframe_irv.svg
+
+animate 20
+
+freeze 30
+
+keyframe_irv_begich_small_dimmed.svg
+
+animate 20
+
+freeze 1
+
+caption-begin
+Based on this assumption,
+----
+
+caption-begin
+the candidate with the [emphasis] smallest ballot stack
+----
+
+caption-begin
+was eliminated.
+----
+
+sync-captions 1:26.4
+
+caption-begin
+This simple counting shortcut
+----
+
+caption-begin
+was adopted in Australia
+----
+
+desired-timestamp 1:23
+
+keyframe_irv_begich_eliminated.svg
+
+animate 30
+
+freeze 90
+
+desired-timestamp 1:29
+
+keyframe_irv_no_begich_ballots.svg
+
+animate 20
+
+freeze 90
+
+keyframe_irv_peltola_elected.svg
+
+animate 20
+
+freeze 1
+
+caption-begin
+more than a [emphasis] century ago.
+----
+
+caption-begin
+Now, instead of hand-counting ballots,
+----
+
+desired-timestamp 1:37
+
+caption-begin
+we have equipment that easily
+----
+
+caption-begin
+counts [emphasis] all the rankings
+----
+
+caption-begin
+on [emphasis] all the ballots,
+----
+
+caption-begin
+so we can now use the [emphasis] plus version.
+----
+
+keyframe_irv_ending.svg
+
+animate 5
+
+keyframe_ballots_grid.svg
+
+animate 5
+
+sync-captions 1:41.4
+
+caption-begin
+Let's do a deeper dive.
+----
+
+caption-begin
+Let's compare the rankings
+----
+
+caption-begin
+for just [emphasis] one pair of
+----
+
+caption-begin
+candidates at a time.
+----
+
+keyframe_ballots_grid_peltola_dimmed.svg
+
+animate 30
+
+freeze 1
+
+object-ids
+group_ballot_b1 group_ballot_b2 group_ballot_b3 group_ballot_b4 group_ballot_b5 group_ballot_b6 group_ballot_b7 group_ballot_b8 group_ballot_b9 group_ballot_b10 group_ballot_b11 group_ballot_b12 group_ballot_b13 group_ballot_b14 group_ballot_b15 group_ballot_b17 group_ballot_b19  group_ballot_b16  group_ballot_b18 group_ballot_b21 group_ballot_b22 group_ballot_b23 group_ballot_b24 group_ballot_b25 group_ballot_b26 group_ballot_b27 group_ballot_b28 group_ballot_b29 group_ballot_b30 group_ballot_b31 group_ballot_b32 group_ballot_b33 group_ballot_b34 group_ballot_b35
+
+arc-height 25
+spread-out-start-top-end-top
+spread-out 1
+
+keyframe_ballots_no_peltola.svg
+
+animate 10
+
+desired-timestamp 1:48
+
+sync-captions 1:47.4
+
+caption-begin
+Here's the one-on-one comparison
+----
+
+caption-begin
+between Begich and Palin,
+----
+
+caption-begin
+as if Peltola had not been
+----
+
+caption-begin
+in this pairwise contest.
+----
+
+caption-begin
+Palin [emphasis] loses this pairwise contest,
+----
+
+caption-begin
+and Begich [emphasis] wins.
+----
+
+keyframe_ballots_no_peltola_win_arrow_small.svg
+
+animate 15
+
+keyframe_ballots_no_peltola_win_arrow.svg
+
+animate 15
+
+freeze 10
+
+keyframe_ballots_no_peltola_arrows_at_cands.svg
+
+animate 15
+
+freeze 10
+
+desired-timestamp 1:59
+
+keyframe_ballots_no_peltola_ending_wiggle_right.svg
+
+animate 5
+
+keyframe_ballots_no_peltola_ending_wiggle_left.svg
+
+animate 15
+
+keyframe_ballots_no_peltola_ending_wiggle_right.svg
+
+animate 15
+
+keyframe_ballots_no_peltola_arrows_at_cands.svg
+
+animate 3
+
+desired-timestamp 2:01
+
+sync-captions 2:00.4
+
+caption-begin
+Next, we stack the ballots
+----
+
+caption-begin
+as if Peltola and Palin compete
+----
+
+caption-begin
+against each other, without Begich.
+----
+
+caption-begin
+Palin also [emphasis] loses this
+----
+
+caption-begin
+pairwise contest,
+----
+
+caption-begin
+and Peltola [emphasis] wins.
+----
+
+keyframe_ballots_no_begich.svg
+
+animate 20
+
+keyframe_ballots_no_begich_win_arrow_small.svg
+
+animate 20
+
+keyframe_ballots_no_begich_win_arrow.svg
+
+animate 20
+
+freeze 25
+
+keyframe_ballots_no_begich_arrows_at_cands.svg
+
+animate 25
+
+freeze 15
+
+desired-timestamp 2:12
+
+keyframe_ballots_no_begich_ending_wiggle_right.svg
+
+animate 5
+
+keyframe_ballots_no_begich_ending_wiggle_left.svg
+
+animate 15
+
+keyframe_ballots_no_begich_ending_wiggle_right.svg
+
+animate 15
+
+keyframe_ballots_no_begich_arrows_at_cands.svg
+
+animate 3
+
+desired-timestamp 2:14
+
+sync-captions 2:13.4
+
+caption-begin
+Finally, we look at the pairwise contest
+----
+
+caption-begin
+between Peltola and Begich,
+---
+
+caption-begin
+without Palin.
+----
+
+keyframe_ballots_no_palin.svg
+
+animate 30
+
+caption-begin
+Begich [emphasis] wins this pairwise contest,
+----
+
+caption-begin
+and Peltola [emphasis] loses.
+----
+
+caption-begin
+It's close, yet it's clear
+----
+
+keyframe_ballots_no_palin_comparison_line.svg
+
+animate 20
+
+caption-begin
+that [emphasis] more than half the voters
+----
+
+caption-begin
+who expressed a preference between [emphasis] these two,
+----
+
+caption-begin
+prefer Begich more than Peltola.
+----
+
+keyframe_ballots_no_palin.svg
+
+animate 30
+
+keyframe_ballots_no_palin_win_arrow_small.svg
+
+animate 15
+
+keyframe_ballots_no_palin_win_arrow.svg
+
+animate 20
+
+freeze 10
+
+keyframe_ballots_no_palin_arrows_at_cands.svg
+
+animate 20
+
+freeze 10
+
+desired-timestamp 2:28
+
+keyframe_ballots_no_palin_ending_wiggle_right.svg
+
+animate 4
+
+keyframe_ballots_no_palin_ending_wiggle_left.svg
+
+animate 7
+
+keyframe_ballots_no_palin_ending_wiggle_right.svg
+
+animate 7
+
+keyframe_ballots_no_palin_arrows_at_cands.svg
+
+animate 4
+
+freeze 8
+
+keyframe_ballots_grid_lower_transition_from_no_palin.svg
+
+animate 2
+
+keyframe_ballots_grid_lower.svg
+
+animate 2
+
+keyframe_ballots_leaving_wiggle_cw.svg
+
+animate 2
+
+keyframe_ballots_leaving_wiggle_ccw.svg
+
+animate 5
+
+keyframe_ballots_leaving_wiggle_cw.svg
+
+animate 5
+
+keyframe_ballots_grid_lower.svg
+
+animate 2
+
+keyframe_ballots_gone.svg
+
+animate 2
+
+keyframe_ballots_gone_last_one.svg
+
+animate 40
+
+keyframe_alaska_comp_begin.svg
+
+animate 7
+
+sync-captions 2:36.4
+
+caption-begin
+Notice Palin lost [emphasis] both
+----
+
+caption-begin
+of her pairwise contests.
+----
+
+desired-timestamp 2:36
+
+keyframe_alaska_comp_palin_glow.svg
+
+animate 20
+
+keyframe_alaska_comp_begin.svg
+
+animate 20
+
+keyframe_alaska_comp_palin_glow.svg
+
+animate 20
+
+caption-begin
+This means she is clearly
+----
+
+caption-begin
+the [emphasis] least popular
+----
+
+caption-begin
+among these three candidates.
+----
+
+keyframe_alaska_comp_palin_bottom_of_three_glow.svg
+
+animate 20
+
+keyframe_alaska_comp_palin_bottom_of_three.svg
+
+sync-captions 2:44.4
+
+caption-begin
+Also notice that Begich
+----
+
+desired-timestamp 2:45
+
+caption-begin
+won [emphasis] both of his pairwise contests.
+----
+
+caption-begin
+This means he is the most [emphasis] popular
+----
+
+caption-begin
+among these three candidates.
+----
+
+keyframe_alaska_comp_begich_top_of_three.svg
+
+animate 20
+
+keyframe_alaska_comp_begich_top_of_three_glow.svg
+
+animate 20
+
+freeze 120
+
+keyframe_alaska_comp_begich_top_of_three.svg
+
+animate 20
+
+desired-timestamp 2:54
+
+keyframe_alaska_comp_from_plus_to_basic.svg
+
+animate 20
+
+sync-captions 2:53.4
+
+caption-begin
+Yet the [emphasis] basic version of
+----
+
+caption-begin
+ranked choice voting
+----
+
+caption-begin
+[emphasis] failed to identify Palin as unpopular
+----
+
+caption-begin
+among the majority of voters.
+----
+
+keyframe_alaska_comp_irv_popularity.svg
+
+animate 20
+
+freeze 60
+
+desired-timestamp 3:15
+
+caption-begin
+As a result, some ballots were counted as support
+----
+
+caption-begin
+for an [emphasis] unpopular candidate while a
+----
+
+caption-begin
+more-popular candidate was [emphasis] eliminated.
+----
+
+object-ids
+group_ballot_b1 group_ballot_b2 group_ballot_b3 group_ballot_b4 group_ballot_b5 group_ballot_b6 group_ballot_b7 group_ballot_b8 group_ballot_b9 group_ballot_b10 group_ballot_b11 group_ballot_b12 group_ballot_b13 group_ballot_b14 group_ballot_b15 group_ballot_b17 group_ballot_b19  group_ballot_b16  group_ballot_b18 group_ballot_b21 group_ballot_b22 group_ballot_b23 group_ballot_b24 group_ballot_b25 group_ballot_b26 group_ballot_b27 group_ballot_b28 group_ballot_b29 group_ballot_b30 group_ballot_b31 group_ballot_b32 group_ballot_b33 group_ballot_b34 group_ballot_b35
+
+arc-height 0
+spread-out-start-top-end-top
+spread-out 0
+
+keyframe_alaska_comp_irv_ballots_hidden.svg
+
+animate 30
+
+sync-captions 3:09.4
+
+caption-begin
+The [emphasis] plus version of
+----
+
+caption-begin
+ranked choice voting
+----
+
+caption-begin
+uses [emphasis] pairwise vote counting
+----
+
+caption-begin
+to overcome the unfairness of
+----
+
+caption-begin
+the [emphasis] basic version.
+----
+
+sync-captions 3:16.4
+
+caption-begin
+If anyone claims that
+----
+
+caption-begin
+pairwise vote counting is unfair,
+----
+
+caption-begin
+or too complex for voters to understand,
+----
+
+caption-begin
+consider that a [emphasis] soccer team
+----
+
+desired-timestamp 3:24
+
+keyframe_alaska_comp_ballots_gone.svg
+
+animate 20
+
+keyframe_soccer_image_transition.svg
+
+freeze 1
+
+caption-begin
+that loses against [emphasis] every other team
+----
+
+keyframe_soccer_image_small.svg
+
+animate 20
+
+keyframe_soccer_image.svg
+
+animate 35
+
+caption-begin
+still in the playoffs,
+----
+
+caption-begin
+certainly deserves to be
+----
+
+caption-begin
+[emphasis] eliminated from a soccer tournament.
+----
+
+desired-timestamp 3:34
+
+sync-captions 3:33.4
+
+caption-begin
+The deep-rooted fairness of
+---
+
+caption-begin
+ranked choice voting [emphasis] plus
+----
+
+caption-begin
+will allow [emphasis] every congressional election
+----
+
+caption-begin
+to have a [emphasis] second Republican
+----
+
+caption-begin
+and [emphasis] second Democrat
+----
+
+caption-begin
+in every general election.
+----
+
+keyframe_soccer_image_transition.svg
+
+animate 20
+
+keyframe_two_reps_begin.svg
+
+freeze 1
+
+keyframe_two_reps_dems_rectangles.svg
+
+animate 20
+
+freeze 30
+
+desired-timestamp 3:43
+
+keyframe_two_reps_dems_biden_vm_only.svg
+
+animate 20
+
+keyframe_two_reps_dems_biden_vm_only_next_frame.svg
+
+freeze 1
+
+sync-captions 3:43.4
+
+caption-begin
+If used in a presidential election,
+----
+
+caption-begin
+the general election could expand
+----
+
+caption-begin
+from [emphasis] just two candidates
+----
+
+caption-begin
+to [emphasis] four candidates.
+----
+
+desired-timestamp 3:49
+
+keyframe_two_reps_dems_haley_harris_in_primary.svg
+
+animate 30
+
+freeze 30
+
+caption-begin
+The second candidate from each party
+----
+
+caption-begin
+should be whichever candidate
+----
+
+caption-begin
+received the [emphasis] second-most votes during the
+----
+
+caption-begin
+party's [emphasis] primary election.
+----
+
+keyframe_two_reps_dems_haley_harris_into_general.svg
+
+animate 30
+
+freeze 120
+
+desired-timestamp 3:59
+
+sync-captions 3:59.4
+
+caption-begin
+If any [emphasis] third-party candidates qualify
+----
+
+caption-begin
+to appear on the general-election ballot,
+----
+
+caption-begin
+[emphasis] they too will be listed.
+----
+
+keyframe_two_reps_dems_sanders_too.svg
+
+animate 20
+
+freeze 20
+
+keyframe_two_reps_dems_ballots_off_screen.svg
+
+animate 5
+
+keyframe_two_reps_dems_ballot_single.svg
+
+animate 20
+
+sync-captions 4:06.4
+
+caption-begin
+Any voter who dislikes having more choices on the ballot,
+----
+
+caption-begin
+can simply mark [emphasis] both candidates from their
+----
+
+caption-begin
+favorite party as their first choice.
+----
+
+desired-timestamp 4:07
+
+keyframe_two_reps_dems_ballot_single_dimmed.svg
+
+animate 20
+
+freeze 20
+
+caption-begin
+Nothing else [emphasis] needs to be marked.
+----
+
+keyframe_two_reps_dems_ballots_marked_dimmed.svg
+
+animate 60
+
+freeze 100
+
+desired-timestamp 4:19.5
+
+caption-begin
+Remember the [emphasis] plus version
+----
+
+caption-begin
+allows [emphasis] any marking pattern.
+----
+
+caption-begin
+That includes multiple candidates
+----
+
+caption-begin
+marked as first choice.
+----
+
+keyframe_two_reps_dems_ballots_marked.svg
+
+animate 15
+
+keyframe_two_reps_dems_ballots_unmarked.svg
+
+animate 15
+
+keyframe_two_reps_dems_ballots_marked.svg
+
+animate 15
+
+sync-captions 4:24.4
+
+caption-begin
+Here's why ranked choice voting [emphasis] plus,
+----
+
+caption-begin
+and a second candidate from each party,
+----
+
+caption-begin
+will [emphasis] dramatically reduce
+----
+
+caption-begin
+the influence of [emphasis] money
+----
+
+caption-begin
+on election results.
+----
+
+freeze 40
+
+keyframe_two_reps_dems_ballots_off_screen.svg
+
+animate 40
+
+desired-timestamp 4:29
+
+keyframe_two_reps_dems_ballots_ending.svg
+
+animate 40
+
+freeze 10
+
+keyframe_money_bush_begin.svg
+
+freeze 60
+
+keyframe_money_bush_money_only.svg
+
+animate 30
+
+freeze 30
+
+keyframe_money_bush_money_only_bounced.svg
+
+animate 30
+
+keyframe_money_bush_money_only.svg
+
+freeze 50
+
+keyframe_money_bush_with_money.svg
+
+animate 20
+
+freeze 60
+
+sync-captions 4:33.4
+
+caption-begin
+To understand why, let's look at the
+----
+
+caption-begin
+two thousand four presidential election.
+----
+
+caption-begin
+The largest amounts of money supported
+----
+
+caption-begin
+George W. Bush,
+----
+
+caption-begin
+the [emphasis] Republican nominee.
+----
+
+freeze 40
+
+keyframe_money_bush_with_money_bounced.svg
+
+animate 40
+
+keyframe_money_bush_with_money.svg
+
+freeze 30
+
+caption-begin
+Some of that money paid for
+----
+
+caption-begin
+television ads that attacked
+----
+
+caption-begin
+[emphasis] Democratic candidate John Edwards.
+----
+
+keyframe_money_edwards_begin.svg
+
+animate 20
+
+keyframe_money_edwards_attack_ads.svg
+
+animate 20
+
+caption-begin
+At that time John Edwards was the
+----
+
+caption-begin
+more popular candidate.
+----
+
+keyframe_money_edwards_attack_ads_bounced.svg
+
+animate 10
+
+keyframe_money_edwards_attack_ads.svg
+
+freeze 1
+
+desired-timestamp 4:54
+
+sync-captions 4:54.4
+
+caption-begin
+Additional money paid for TV ads
+----
+
+caption-begin
+[emphasis] supporting Democratic candidate
+----
+
+caption-begin
+John Kerry.
+----
+
+keyframe_money_kerry_in_primary.svg
+
+animate 40
+
+keyframe_money_kerry_support_ads.svg
+
+animate 40
+
+caption-begin
+Kerry was more [emphasis] conservative,
+----
+
+caption-begin
+so he was less of a threat
+----
+
+caption-begin
+to the biggest campaign contributors.
+----
+
+keyframe_money_kerry_support_ads_bounced.svg
+
+animate 40
+
+keyframe_money_kerry_support_ads.svg
+
+freeze 1
+
+sync-captions 5:05.4
+
+caption-begin
+Yet [emphasis] more money was paid to support
+----
+
+caption-begin
+a [emphasis] third Democratic candidate,
+----
+
+caption-begin
+Howard Dean, who was
+----
+
+caption-begin
+politically similar to Edwards.
+----
+
+desired-timestamp 5:05
+
+keyframe_money_dean_begin.svg
+
+animate 40
+
+freeze 30
+
+keyframe_money_dean_support_ads.svg
+
+animate 40
+
+desired-timestamp 5:12
+
+sync-captions 5:12.4
+
+caption-begin
+The television ads supporting Howard Dean
+----
+
+caption-begin
+were part of a tactic called [emphasis] vote splitting.
+----
+
+keyframe_money_dean_support_ads_bounced.svg
+
+animate 40
+
+keyframe_money_dean_support_ads.svg
+
+freeze 1
+
+caption-begin
+It's an election version of the
+----
+
+caption-begin
+military tactic known as [emphasis] divide and conquer.
+----
+
+keyframe_money_kerry_vote_splitting.svg
+
+animate 40
+
+sync-captions 5:23.4
+
+caption-begin
+Vote splitting exploits the fact that
+----
+
+caption-begin
+we cannot express [emphasis] secondary support
+----
+
+caption-begin
+for any other candidate in the election.
+----
+
+caption-begin
+Vote splitting also involves
+----
+
+keyframe_money_kerry_vote_concentration.svg
+
+caption-begin
+[emphasis] concentrating financial support
+----
+
+caption-begin
+for a [emphasis] single primary candidate, in this case Kerry.
+----
+
+grammar-note-begin
+Duck.AI says:
+Use "concentrating financial support on a single candidate."
+("Support" is typically directed on or for, but support on is less common in American English; "support for a single candidate" is more standard—however your original structure with concentrating works best as on. If you want the most natural phrasing overall, use "concentrating financial support for a single candidate.")
+----
+
+desired-timestamp 5:36
+
+keyframe_money_kerry_in_general_election.svg
+
+animate 40
+
+freeze 180
+
+sync-captions 5:38.4
+
+caption-begin
+Soon after Kerry was nominated,
+----
+
+caption-begin
+more money from the same sources
+----
+
+caption-begin
+paid for [emphasis] attack ads against Kerry.
+----
+
+keyframe_money_kerry_general_election_attack_ads.svg
+
+animate 40
+
+freeze 150
+
+caption-begin
+Those attack ads,
+----
+
+caption-begin
+and [emphasis] support ads for George W. Bush,
+----
+
+caption-begin
+helped Bush to win
+----
+
+caption-begin
+more votes than Kerry.
+----
+
+sync-captions 5:53.4
+
+caption-begin
+This tactic of [emphasis] blocking
+----
+
+caption-begin
+[emphasis] popular [emphasis] reform-minded candidates
+----
+
+caption-begin
+from reaching the general election
+----
+
+desired-timestamp 5:54
+
+keyframe_money_kerry_transition_split_block.svg
+
+animate 40
+
+caption-begin
+exploits the fact that
+----
+
+caption-begin
+each party is allowed [emphasis] only one nominee.
+----
+
+keyframe_money_kerry_blocking_tactic.svg
+
+animate 40
+
+sync-captions 6:03.4
+
+caption-begin
+If the candidate in each party
+----
+
+caption-begin
+with the [emphasis] second-most primary votes
+----
+
+caption-begin
+[emphasis] also had been allowed to
+----
+
+desired-timestamp 6:03
+
+keyframe_money_green_tape.svg
+
+animate 40
+
+freeze 40
+
+caption-begin
+reach the general election,
+----
+
+caption-begin
+it's very likely one of the
+----
+
+caption-begin
+[emphasis] secondary candidates
+----
+
+caption-begin
+would have become president.
+----
+
+keyframe_money_green_tape_edwards_too.svg
+
+animate 40
+
+desired-timestamp 6:13
+
+sync-captions 6:14.4
+
+caption-begin
+These reasons largely account for why
+----
+
+caption-begin
+a [emphasis] second nominee from each party
+----
+
+keyframe_money_republican_question_mark.svg
+
+animate 40
+
+freeze 40
+
+caption-begin
+will [emphasis] reduce the influence
+----
+
+caption-begin
+of [emphasis] money in politics.
+----
+
+keyframe_money_ending.svg
+
+animate 40
+
+desired-timestamp 6:22
+
+sync-captions 6:23.4
+
+caption-begin
+A very clear example of the blocking tactic
+----
+
+keyframe_obama_begin.svg
+
+freeze 1
+
+caption-begin
+happened in the two thousand eight
+----
+
+keyframe_obama_blocking.svg
+
+animate 30
+
+freeze 25
+
+caption-begin
+presidential election.
+----
+
+keyframe_obama_clinton_primary.svg
+
+animate 30
+
+freeze 25
+
+caption-begin
+Some money from [emphasis] Republicans
+----
+
+caption-begin
+was paid to [emphasis] promote Barack Obama
+----
+
+caption-begin
+on social-media platforms
+---
+
+caption-begin
+during the Democratic [emphasis] primary.
+----
+
+keyframe_obama_clinton_money.svg
+
+animate 30
+
+freeze 25
+
+caption-begin
+Even more money was spent
+----
+
+caption-begin
+attacking Hillary Clinton.
+----
+
+keyframe_obama_clinton_money_bounced.svg
+
+animate 30
+
+freeze 25
+
+keyframe_obama_clinton_money.svg
+
+freeze 1
+
+sync-captions 6:41.4
+
+caption-begin
+By exploiting the limit
+----
+
+caption-begin
+of one candidate per party,
+----
+
+desired-timestamp 6:42
+
+keyframe_obama_yellow_tape.svg
+
+animate 30
+
+freeze 25
+
+caption-begin
+Hillary Clinton was [emphasis] blocked from
+----
+
+caption-begin
+reaching the general election.
+----
+
+keyframe_obama_in_general_election.svg
+
+animate 30
+
+freeze 25
+
+sync-captions 6:49.5
+
+caption-begin
+During the general election,
+----
+
+caption-begin
+not much money was spent [emphasis] opposing Obama
+----
+
+desired-timestamp 6:51
+
+caption-begin
+because the biggest campaign contributors
+----
+
+caption-begin
+assumed Obama [emphasis] could not possibly win.
+----
+
+keyframe_obama_in_general_election_few_attack_ads.svg
+
+animate 30
+
+freeze 25
+
+caption-begin
+Yet Obama's slogan "hope and change"
+----
+
+caption-begin
+and the very rare
+----
+
+caption-begin
+opportunity to vote for a
+----
+
+caption-begin
+[emphasis] reform-minded politician
+----
+
+caption-begin
+in a [emphasis] general election
+----
+
+caption-begin
+enabled him to [emphasis] win.
+----
+
+desired-timestamp 7:01
+
+keyframe_obama_wins_general_election.svg
+
+animate 30
+
+freeze 200
+
+desired-timestamp 7:11
+
+sync-captions 7:12.4
+
+caption-begin
+Using Obama to block Clinton
+----
+
+caption-begin
+would not have worked
+---
+
+keyframe_obama_green_tape.svg
+
+animate 30
+
+freeze 25
+
+caption-begin
+if the candidate with the
+----
+
+caption-begin
+second-most votes [emphasis] also reached
+----
+
+caption-begin
+the general election.
+----
+
+keyframe_obama_and_clinton_in_general_election.svg
+
+animate 30
+
+freeze 25
+
+desired-timestamp 7:20
+
+keyframe_obama_ending.svg
+
+animate 30
+
+sync-captions 7:20.4
+
+caption-begin
+The twenty twenty presidential election
+----
+
+caption-begin
+provided another high-profile
+----
+
+caption-begin
+example of the [emphasis] blocking tactic.
+----
+
+keyframe_biden_begin.svg
+
+freeze 1
+
+keyframe_biden_primary_candidates.svg
+
+animate 25
+
+freeze 15
+
+caption-begin
+In that election,
+----
+
+caption-begin
+Elizabeth Warren and Bernie Sanders
+----
+
+caption-begin
+were popular [emphasis] reform-minded candidates.
+----
+
+keyframe_biden_attack_ads_warren_sanders.svg
+
+animate 25
+
+freeze 15
+
+keyframe_biden_attack_ads_warren_sanders_bounced.svg
+
+animate 25
+
+freeze 15
+
+keyframe_biden_attack_ads_warren_sanders.svg
+
+freeze 1
+
+caption-begin
+They were [emphasis] blocked from reaching
+----
+
+caption-begin
+the general election.
+----
+
+keyframe_biden_attack_ads_effect.svg
+
+animate 25
+
+freeze 15
+
+keyframe_biden_yellow_tape.svg
+
+animate 25
+
+freeze 15
+
+keyframe_biden_in_general_election.svg
+
+animate 25
+
+desired-timestamp 7:35
+
+sync-captions 7:37.4
+
+caption-begin
+If instead,
+----
+
+caption-begin
+ranked choice voting [emphasis] plus
+----
+
+caption-begin
+and [emphasis] second nominees
+----
+
+keyframe_biden_green_tape.svg
+
+animate 50
+
+caption-begin
+had been used in that election,
+----
+
+caption-begin
+the winner would have been
+----
+
+caption-begin
+one of the [emphasis] blocked candidates.
+----
+
+keyframe_biden_general_include_warren_sanders.svg
+
+animate 30
+
+freeze 25
+
+keyframe_biden_almost_ending.svg
+
+animate 30
+
+desired-timestamp 7:45
+
+sync-captions 7:46.4
+
+caption-begin
+Of course these examples,
+----
+
+caption-begin
+which involve familiar names,
+----
+
+caption-begin
+ignore the complication of electoral votes.
+----
+
+keyframe_biden_ending.svg
+
+animate 30
+
+keyframe_incumbent_begin.svg
+
+freeze 1
+
+keyframe_incumbent_presidential.svg
+
+animate 30
+
+desired-timestamp 7:52
+
+sync-captions 7:54.4
+
+caption-begin
+[emphasis] Congressional elections involve less-familiar politicians,
+----
+
+caption-begin
+yet they too are manipulated using the [emphasis] blocking tactic.
+----
+
+keyframe_incumbent_in_congress.svg
+
+animate 40
+
+freeze 20
+
+desired-timestamp 8:00
+
+sync-captions 8:01.4
+
+caption-begin
+Let's look at a [emphasis] Republican primary election
+----
+
+caption-begin
+because Republican primaries often involve a
+----
+
+caption-begin
+different kind of blocking tactic.
+----
+
+keyframe_incumbent_party_republican.svg
+
+animate 40
+
+freeze 30
+
+desired-timestamp 8:07
+
+sync-captions 8:09.4
+
+caption-begin
+Suppose a Republican member of Congress
+----
+
+caption-begin
+obeys the wishes of the [emphasis] voters
+----
+
+caption-begin
+who elected him,
+----
+
+caption-begin
+and votes in Congress
+----
+
+caption-begin
+[emphasis] against the wishes of
+----
+
+caption-begin
+his biggest campaign contributors.
+----
+
+desired-timestamp 8:20
+
+keyframe_incumbent_re_election.svg
+
+animate 60
+
+freeze 20
+
+sync-captions 8:19.4
+
+caption-begin
+During his next re-election,
+----
+
+caption-begin
+wealthy Republicans give money
+----
+
+caption-begin
+to support a Republican [emphasis] replacement.
+----
+
+keyframe_incumbent_money.svg
+
+animate 60
+
+freeze 60
+
+caption-begin
+And they fund [emphasis] attack ads [slight pause]
+----
+
+caption-begin
+[emphasis] against the incumbent.
+----
+
+keyframe_incumbent_money_effect.svg
+
+animate 60
+
+desired-timestamp 8:27
+
+sync-captions 8:29.4
+
+caption-begin
+This version of the blocking tactic
+----
+
+caption-begin
+is why both Republicans and
+----
+
+caption-begin
+Democrats in Congress
+----
+
+keyframe_incumbent_yellow_tape.svg
+
+animate 40
+
+caption-begin
+behave like [emphasis] puppets of their
+----
+
+caption-begin
+biggest campaign contributors.
+----
+
+keyframe_incumbent_replacement_wins.svg
+
+animate 40
+
+freeze 10
+
+desired-timestamp 8:36
+
+sync-captions 8:38.4
+
+caption-begin
+Our general elections need to offer
+----
+
+caption-begin
+a [emphasis] second candidate from each party.
+----
+
+keyframe_incumbent_green_tape.svg
+
+animate 40
+
+freeze 60
+
+desired-timestamp 8:42
+
+sync-captions 8:43.4
+
+caption-begin
+This long-overdue change
+----
+
+keyframe_incumbent_reaches_general.svg
+
+animate 40
+
+freeze 30
+
+caption-begin
+will allow [emphasis] us, the [emphasis] voters,
+----
+
+caption-begin
+to elect politicians who obey [emphasis] voters,
+----
+
+caption-begin
+instead of obeying the
+----
+
+caption-begin
+[emphasis] lobbyists who are hired by their
+----
+
+caption-begin
+biggest campaign contributors.
+----
+
+desired-timestamp 8:56
+
+keyframe_incumbent_ending.svg
+
+animate 30
+
+keyframe_summary_begin.svg
+
+freeze 1
+
+keyframe_summary_blocking_tactic_works.svg
+
+animate 30
+
+sync-captions 8:56.4
+
+caption-begin
+The [emphasis] blocking tactic [emphasis] exploits our limit of
+----
+
+caption-begin
+only [emphasis] one candidate from each party.
+----
+
+keyframe_summary_only_one_candidate.svg
+
+animate 40
+
+sync-captions 9:01.4
+
+caption-begin
+We can [emphasis] defeat the blocking tactic
+----
+
+desired-timestamp 9:02
+
+keyframe_summary_defeat_blocking_tactic.svg
+
+animate 25
+
+sync-captions 9:03.4
+
+caption-begin
+by allowing a [emphasis] second candidate
+---
+
+desired-timestamp 9:04
+
+keyframe_summary_two_per_party.svg
+
+animate 25
+
+caption-begin
+from each big party,
+---
+
+sync-captions 9:06.4
+
+caption-begin
+and adopting ranked choice voting [emphasis] plus.
+----
+
+keyframe_summary_full.svg
+
+animate 40
+
+freeze 20
+
+desired-timestamp 9:08
+
+sync-captions 9:10.4
+
+caption-begin
+It's understandable why billionaires
+----
+
+keyframe_summary_full_money_bounced.svg
+
+animate 10
+
+keyframe_summary_full.svg
+
+freeze 1
+
+keyframe_summary_full_money_bounced.svg
+
+animate 10
+
+keyframe_summary_full.svg
+
+freeze 1
+
+caption-begin
+give [emphasis] lots of [emphasis] money to anyone
+----
+
+caption-begin
+who [emphasis] criticizes ranked choice voting.
+----
+
+keyframe_summary_lower_money_only.svg
+
+animate 10
+
+desired-timestamp 9:15
+
+sync-captions 9:16.4
+
+caption-begin
+Those critics criticize the [emphasis] basic version,
+----
+
+caption-begin
+and they [emphasis] pretend the [emphasis] plus version does not exist, [slight pause]
+----
+
+caption-begin
+or is [emphasis] much too complicated.
+----
+
+keyframe_summary_lower_gone.svg
+
+animate 40
+
+freeze 30
+
+desired-timestamp 9:23.5
+
+keyframe_summary_begin.svg
+
+animate 10
+
+sync-captions 9:25.4
+
+caption-begin
+To reach [dramatically] higher levels of [dramatically] democracy
+---
+
+keyframe_democracy_begin.svg
+
+animate 30
+
+keyframe_democracy_higher_level.svg
+
+animate 30
+
+caption-begin
+we [dramatically] must move beyond just asking
+----
+
+desired-timestamp 9:26
+
+keyframe_democracy_favorite.svg
+
+animate 30
+
+caption-begin
+"who is your [emphasis] favorite candidate?"
+----
+
+sync-captions 9:32.4
+
+caption-begin
+Then we, the [emphasis] majority of voters,
+----
+
+desired-timestamp 9:31
+
+keyframe_democracy_rcv.svg
+
+animate 30
+
+caption-begin
+can elect [emphasis] reform-minded leaders
+----
+
+desired-timestamp 9:33.5
+
+keyframe_democracy_leaders.svg
+
+animate 30
+
+caption-begin
+who will adopt long-overdue reforms,
+----
+
+desired-timestamp 9:36
+
+keyframe_democracy_reforms.svg
+
+animate 30
+
+desired-timestamp 9:40
+
+keyframe_democracy_full.svg
+
+animate 30
+
+keyframe_democracy_full_money_bumped.svg
+
+animate 30
+
+keyframe_democracy_full.svg
+
+freeze 10
+
+caption-begin
+including reducing the excessive earning gap
+----
+
+caption-begin
+between [dramatically] working families and
+----
+
+caption-begin
+[dramatically] multi-millionaires.
+----
+
+desired-timestamp 9:46
+
+keyframe_democracy_begin.svg
+
+animate 10
+
+keyframe_tell_others_begin.svg
+
+freeze 1
+
+sync-captions 9:46.4
+
+caption-begin
+[dramatically] Please tell other voters
+----
+
+keyframe_tell_others_voters.svg
+
+animate 20
+
+caption-begin
+about the [dramatically] blocking tactic,
+----
+
+desired-timestamp 9:48
+
+keyframe_tell_others_blocking.svg
+
+animate 20
+
+caption-begin
+and that we need a [dramatically] second Democrat,
+----
+
+caption-begin
+and a [dramatically] second Republican,
+----
+
+desired-timestamp 9:51
+
+keyframe_tell_others_second.svg
+
+animate 20
+
+caption-begin
+and any popular [emphasis] third-party candidates
+----
+
+caption-begin
+in [dramatically] every general election,
+----
+
+caption-begin
+[dramatically] especially Congressional elections.
+----
+
+desired-timestamp 9:58
+
+keyframe_tell_others_general.svg
+
+animate 20
+
+desired-timestamp 10:00
+
+keyframe_tell_others_congressional.svg
+
+animate 20
+
+desired-timestamp 10:02
+
+keyframe_tell_others_full.svg
+
+animate 20
+
+sync-captions 10:02.4
+
+caption-begin
+[dramatically] Ranked choice voting [emphasis] plus
+----
+
+caption-begin
+[dramatically] makes this possible!
+----
+
+desired-timestamp 10:05
+
+keyframe_tell_others_begin.svg
+
+animate 30
+
+keyframe_resources_begin.svg
+
+freeze 1
+
+animate 30
+
+keyframe_resources_general.svg
+
+freeze 80
+
+caption-begin
+[warmly] To learn more, here are some resources.
+----
+
+keyframe_resources_full.svg
+
+animate 30
+
+freeze 1
+
+sync-captions 10:09.4
+
+caption-begin
+(Narration by Jessica Anne Bogart
+----
+
+caption-begin
+at ElevenLabs.io)
+----
+
+caption-begin
+(Video created by Richard Fobes
+----
+
+caption-begin
+at VoteFair.org)
+----
+
+freeze 30
+
+sync-captions 10:17.5
+
+desired-timestamp 10:18
