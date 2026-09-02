@@ -431,11 +431,19 @@ int main(int argc, char* argv[]) {
     oss_output_caption_filename << "output_rendered_caption.png"; 
     output_rendered_caption_file_path = oss_output_caption_filename.str();
 
-    //  Get the frame number of the last animation SVG file.
+    //  Get the frame number of the last animation SVG file, and the last
+    //  caption SVG file, and use the larger as the last frame number.
     size_t last_input_animation_file_index = svg_animation_files.size() - 1;
     const fs::path& input_animation_file_path = svg_animation_files[last_input_animation_file_index];
     std::string filename_without_extension = input_animation_file_path.stem().string();
     size_t last_animation_frame_number = extract_frame_number_from_filename(filename_without_extension);
+    size_t last_input_caption_file_index = svg_caption_files.size() - 1;
+    const fs::path& input_caption_file_path = svg_caption_files[last_input_caption_file_index];
+    filename_without_extension = input_caption_file_path.stem().string();
+    size_t last_caption_frame_number = extract_frame_number_from_filename(filename_without_extension);
+    if (last_caption_frame_number > last_animation_frame_number) {
+        last_animation_frame_number = last_caption_frame_number;
+    }
     trace << "Last frame number is " << last_animation_frame_number << std::endl;
 
     //  Calculate the number of output frames.
