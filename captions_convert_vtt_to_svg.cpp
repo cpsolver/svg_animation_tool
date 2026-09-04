@@ -24,6 +24,7 @@
 #include <iomanip>
 #include <cctype>
 #include <filesystem>
+#include <regex>
 
 namespace fs = std::filesystem;
 using namespace std;
@@ -32,12 +33,11 @@ static const int framesPerSecond = 30;
 
 static const string inputVttFilename = "output_captions_and_timing.vtt";
 static const string inputSvgTemplateFilename = "caption_template.svg";
-static const string outFilePrefixSvg = "caption_frame_";
-static const string caption_frame_zero_template = "caption_frame_zero_template.svg";
-static const string templateZeroFileDir = "caption_frames_svg/";
-static const string filename_caption_frame_zero = "caption_frame_00000.svg";
 
-const fs::path templateFileDir = "caption_frames_svg/";
+const fs::path outputSvgDir = "caption_frames_svg";
+static const string outFilePrefixSvg = "caption_frame_";
+static const string filename_caption_frame_zero_template = "caption_frame_zero_template.svg";
+static const string filename_caption_frame_zero = "caption_frame_00000.svg";
 
 
 //---------------------------------
@@ -105,11 +105,32 @@ int main() {
 
 
     //---------------------------------
+    // Create the output directory, and delete any SVG files
+    // from a previous run.
+    try {
+        fs::create_directories(outputSvgDir);
+    } catch (...) {
+        std::cerr << "Error: cannot create output directory: "
+                  << outputSvgDir << "\n";
+        return 1;
+    }
+    int deleteCount = 0;
+    std::regex frameRe(R"(frame_[0-9]+\.svg)");
+    for (const auto& entry : fs::directory_iterator(outputSvgDir)) {
+        if (entry.is_regular_file() &&
+            std::regex_match(entry.path().filename().string(), frameRe)) {
+            fs::remove(entry.path());
+            ++deleteCount;
+        }
+    }
+
+
+    //---------------------------------
     // Copy file caption_frame_zero_template.svg to caption_frames_svg/caption_frame_00000.svg
-    path_to_caption_zero_template = caption_frame_zero_template;
+    path_to_caption_zero_template = filename_caption_frame_zero_template;
     std::ostringstream oss_render_zero_filename;
     oss_render_zero_filename << filename_caption_frame_zero;
-    fs::path output_render_zero_path = templateFileDir / oss_render_zero_filename.str();
+    fs::path output_render_zero_path = outputSvgDir / oss_render_zero_filename.str();
     fs::copy_file(
         path_to_caption_zero_template,
         output_render_zero_path,
@@ -198,10 +219,10 @@ int main() {
         //  If the caption text is empty, copy the empty SVG template,
         //  Then repeat the loop.
         if (outputCaptionText.empty()) {
-            path_to_caption_zero_template = caption_frame_zero_template;
+            path_to_caption_zero_template = filename_caption_frame_zero_template;
             std::ostringstream oss_render_zero_filename;
             oss_render_zero_filename << filename_caption_frame_zero;
-            fs::path output_render_zero_path = templateFileDir / oss_render_zero_filename.str();
+            fs::path output_render_zero_path = outputSvgDir / oss_render_zero_filename.str();
             fs::copy_file(path_to_caption_zero_template, output_render_zero_path,
                 std::filesystem::copy_options::overwrite_existing);
             continue;
@@ -216,7 +237,7 @@ int main() {
 
         //---------------------------------
         //  Write SVG output file
-        fs::path outFilenamePath = templateFileDir / (outFilePrefixSvg + frameNumberStart + ".svg");
+        fs::path outFilenamePath = outputSvgDir / (outFilePrefixSvg + frameNumberStart + ".svg");
         std::string outFilename = outFilenamePath.string();
         ofstream outFile(outFilename);
         if (!outFile.is_open()) {
