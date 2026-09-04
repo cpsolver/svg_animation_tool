@@ -452,6 +452,17 @@ int main(int argc, char* argv[]) {
     size_t number_of_output_frames = static_cast<size_t>(((last_animation_frame_number + 1) * global_output_frame_rate) / global_input_frame_rate);
     trace << "Number of output frames is " << number_of_output_frames << std::endl;
 
+
+    //  If the first animation frame number starts at more than one second
+    //  into the video, only render the supplied SVG frames and their in-between
+    //  frames, and one second into a gap in the frame numbers.  This allows part
+    //  of a full video to be rendered, for possible splicing into previously
+    //  rendered frames.
+    bool only_render_segments_supplied = false;
+    if (next_animation_frame_number > global_input_frame_rate) {
+        only_render_segments_supplied = true;
+    }
+
     //  Begin loop for each output frame number.
     for (output_frame_number = 0; output_frame_number <= number_of_output_frames; output_frame_number++) {
 
@@ -482,6 +493,15 @@ int main(int argc, char* argv[]) {
                 std::string filename_without_extension = input_caption_file_path.stem().string();
                 next_caption_frame_number = extract_frame_number_from_filename(filename_without_extension);
             }
+        }
+
+        //  If only some segments are being rendered, and this frame is outside
+        //  a segment being rendered, repeat the loop for the next frame
+        //  without rendering this frame.
+        if ((only_render_segments_supplied == true)
+                && (( next_animation_frame_number < (idealized_input_frame_number - global_input_frame_rate))
+                || ( next_animation_frame_number > (idealized_input_frame_number + global_input_frame_rate)))) {
+            continue;
         }
 
         //  If the caption needs to change, or this is the first caption, convert the
