@@ -114,13 +114,11 @@ int main() {
                   << outputSvgDir << "\n";
         return 1;
     }
-    int deleteCount = 0;
     std::regex frameRe(R"(frame_[0-9]+\.svg)");
     for (const auto& entry : fs::directory_iterator(outputSvgDir)) {
         if (entry.is_regular_file() &&
             std::regex_match(entry.path().filename().string(), frameRe)) {
             fs::remove(entry.path());
-            ++deleteCount;
         }
     }
 
