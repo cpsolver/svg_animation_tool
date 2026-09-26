@@ -124,11 +124,14 @@ int main() {
 
 
     //---------------------------------
-    // Copy file caption_frame_zero_template.svg to caption_frames_svg/caption_frame_00000.svg
+    // Copy file caption_frame_zero_template.svg to
+    // caption_frames_svg/caption_frame_00000.svg
     path_to_caption_zero_template = filename_caption_frame_zero_template;
     std::ostringstream oss_render_zero_filename;
     oss_render_zero_filename << filename_caption_frame_zero;
     fs::path output_render_zero_path = outputSvgDir / oss_render_zero_filename.str();
+    cout << "Copying file " << filename_caption_frame_zero_template
+            << "\n";
     fs::copy_file(
         path_to_caption_zero_template,
         output_render_zero_path,
