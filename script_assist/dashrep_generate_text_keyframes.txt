@@ -1,0 +1,231 @@
+dashrep-language-yes:
+----
+documentation-in-unused-phrase:
+Purpose: Generate keyframe files using text in image-description-begin comments within script.
+----
+
+
+list-of-keyframes-needed:
+keyframe_notation_e_m_c_defined.svg
+keyframe_notation_choose_notation.svg
+keyframe_statistics_numbers_meaning.svg
+keyframe_geometry_pictures_versus_words.svg
+----
+
+
+path-to-generated-keyframes:
+/path/to/folder/video_math_secrets/temp_generated_keyframes/
+----
+
+path-to-script:
+/path/to/folder/CPSolver_Github/books/math_secrets/
+----
+
+script-file-name:
+script_animation_math_secrets.txt
+----
+
+output-file-name:
+output_trace_from_generate_text_keyframes.txt
+----
+
+filename-svg-code-begin:
+keyframe_master_template_text_descriptions_part_one.txt
+----
+
+filename-svg-code-end:
+keyframe_master_template_text_descriptions_part_two.txt
+----
+
+
+
+generate-keyframe-file:
+ambee  copy-from-phrase-append-to-file  empty-or-keyframe-svg-filename  ambee  output-file-name  amenn  amenn
+
+combee
+ASSUMES older versions of svg files have been deleted,
+otherwise appends to those files!
+comenn
+
+ambee  copy-from-phrase-append-to-file  svg-code-begin  ambee  empty-or-keyframe-svg-filename  amenn  amenn
+ambee  copy-from-phrase-append-to-file  multiple-generated-objects-svg  ambee  empty-or-keyframe-svg-filename  amenn  amenn
+ambee  copy-from-phrase-append-to-file  svg-code-end  ambee  empty-or-keyframe-svg-filename  amenn  amenn
+ambee  clear-phrase  empty-or-keyframe-svg-filename  amenn
+ambee  clear-phrase  multiple-generated-objects-svg  amenn
+----
+
+
+
+start-here:
+ambee  do-initialization  amenn
+ambee  linewise-read-from-file-and-use-handler  ambee  script-file-name  amenn  handle-one-line-of-script  amenn
+----
+
+
+do-initialization:
+ambee  copy-from-file-to-phrase  ambee  filename-svg-code-begin  amenn  svg-code-begin  amenn
+ambee  copy-from-file-to-phrase  ambee  filename-svg-code-end  amenn  svg-code-end  amenn
+ambee  copy-text  path-to-generated-keyframes  dashrep-path-prefix-for-file-writing  amenn
+ambee  delete-file  ambee  output-file-name  amenn  amenn
+ambee  copy-text  path-to-script  dashrep-path-prefix-for-file-reading  amenn
+ambee  copy-text  character-hyphen  text-three-dashes  amenn
+ambee  append-text-no-space  character-hyphen  text-three-dashes  amenn
+ambee  append-text-no-space  character-hyphen  text-three-dashes  amenn
+ambee  copy-and-replace  text-identifier-at-begin-description-lines-with-underscores  text-identifier-at-begin-description-lines character-underscore character-hyphen amenn
+ambee  copy-text  string-no  yes-or-no-within-image-description-lines  amenn
+ambee  copy-text  digit-one  object-id-number  amenn
+ambee  copy-text  position-y-value-initial  position-y-value  amenn
+ambee  copy-text  string-no  yes-or-no-ready-to-generate-keyframe  amenn
+----
+
+
+handle-one-line-of-script:
+ambee  copy-text  linewise-input-line-from-file  line-from-script  amenn
+ambee  handle-get-keyframe-svg-filename  amenn
+ambee  handle-recognize-end-of-image-description  amenn
+ambee  handle-description-line-if-within-image-description  amenn
+ambee  handle-recognize-start-of-image-description  amenn
+ambee  maybe-generate-keyframe-file  amenn
+----
+
+
+handle-get-keyframe-svg-filename:
+ambee  copy-characters-from-position-to-position  line-from-script  possible-keyframe-underscore  1  9  amenn
+ambee  copy-text  line-from-script  empty-or-keyframe-svg-filename  amenn
+
+ambee  if-no-begin  ambee  yes-or-no-same-two-phrase-definitions  string-keyframe-underscore  possible-keyframe-underscore  amenn  amenn
+    ambee  clear-phrase  empty-or-keyframe-svg-filename  amenn
+ambee  if-end  amenn
+
+ambee  put-into-phrase  character-position-or-zero-if-no-match  ambee  get-position-of-matching-text  characters-dot-svg  line-from-script  amenn  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-same-two-words  zero  ambee  zero-or-nonzero  character-position-or-zero-if-no-match  amenn  amenn  amenn
+    ambee  clear-phrase  empty-or-keyframe-svg-filename  amenn
+ambee  if-end  amenn
+
+ambee  copy-words-found-in-both-lists  empty-or-keyframe-svg-filename  list-of-keyframes-needed  empty-or-keyframe-svg-filename  amenn
+----
+
+
+handle-recognize-start-of-image-description:
+ambee  if-yes-begin  ambee  yes-or-no-same-two-phrase-definitions  text-identifier-at-begin-description-lines  line-from-script  amenn  amenn
+    ambee  copy-text  string-yes  yes-or-no-within-image-description-lines  amenn
+    ambee  clear-phrase  multiple-generated-objects-svg  amenn
+    ambee  clear-phrase  accumulated-image-description-lines  amenn
+    ambee  copy-text  digit-one  object-id-number  amenn
+    ambee  copy-text  position-y-value-initial  position-y-value  amenn
+ambee  if-end  amenn
+----
+
+
+handle-recognize-end-of-image-description:
+ambee  put-into-phrase  character-position-or-zero-if-not-three-dashes  ambee  get-position-of-matching-text  text-three-dashes  line-from-script  amenn  amenn
+
+ambee  if-no-begin  ambee  yes-or-no-same-two-phrase-definitions  digit-zero  character-position-or-zero-if-not-three-dashes  amenn  amenn
+    ambee copy-text  string-no  yes-or-no-within-image-description-lines  amenn
+ambee  if-end  amenn
+----
+
+
+
+handle-description-line-if-within-image-description:
+ambee  if-yes-begin  ambee  yes-or-no-within-image-description-lines  amenn  amenn
+    ambee  insert-new-object-with-image-text  amenn
+    ambee  append-text  line-from-script  accumulated-image-description-lines  amenn
+ambee  if-end  amenn
+----
+
+
+
+insert-new-object-with-image-text:
+ambee  expand-text  template-object-svg-part-1  expanded-object-svg-part-1  amenn
+ambee  copy-and-replace  expanded-object-svg-part-1  expanded-object-svg-part-1  string-open-angle-bracket-with-underscores  character-open-angle-bracket  amenn
+ambee  expand-text  template-object-svg-part-2  expanded-object-svg-part-2  amenn
+ambee  copy-text  expanded-object-svg-part-1  generated-object-svg  amenn
+ambee  append-text-no-space  line-from-script  generated-object-svg  amenn
+ambee  append-text-no-space  expanded-object-svg-part-2  generated-object-svg  amenn
+ambee  prepend-text-no-space  generated-object-svg  multiple-generated-objects-svg  amenn
+ambee  numeric-increment  object-id-number  amenn
+ambee  put-into-phrase  position-y-value  ambee  numeric-add  ambee  position-y-value  amenn  ambee  position-y-value-delta  amenn  amenn  amenn
+----
+
+
+
+maybe-generate-keyframe-file:
+ambee  copy-text  string-yes  yes-or-no-ready-to-generate-keyframe  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-empty-phrase  empty-or-keyframe-svg-filename  amenn  amenn
+    ambee  copy-text  string-no  yes-or-no-ready-to-generate-keyframe amenn
+ambee  if-end  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-empty-phrase  accumulated-image-description-lines  amenn  amenn
+    ambee  copy-text  string-no  yes-or-no-ready-to-generate-keyframe amenn
+ambee  if-end  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-ready-to-generate-keyframe  amenn  amenn
+    ambee  generate-keyframe-file  amenn
+    ambee  clear-phrase  empty-or-keyframe-svg-filename  amenn
+    ambee  clear-phrase  accumulated-image-description-lines  amenn
+ambee  if-end  amenn
+
+ambee  copy-text  string-no  yes-or-no-ready-to-generate-keyframe  amenn
+----
+
+
+
+position-y-value-initial:
+220
+----
+position-y-value-delta:
+100
+----
+string-keyframe-underscore:
+keyframe_
+----
+characters-dot-txt:
+.txt
+----
+characters-dot-svg:
+.svg
+----
+text-identifier-at-begin-description-lines-with-underscores:
+image_description_begin
+----
+string-yes:
+yes
+----
+string-no:
+no
+----
+digit-zero:
+0
+----
+digit-one:
+1
+----
+string-open-angle-bracket-with-underscores:
+open_angle_bracket
+----
+character-open-angle-bracket:
+<
+----
+
+
+template-object-svg-part-1:
+<character_space><character_space><character_space><character_space><text new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>xml:space="preserve" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>style="font-style:normal;font-variant:normal;font-weight:600;font-stretch:normal;font-size:96px;line-height:110%;font-family:Inter;-inkscape-font-specification:'Inter,<character_space>Semi-Bold';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;white-space:pre;inline-size:719.401;display:inline;fill:#0023cc;fill-opacity:1;stroke:#ffff8a;stroke-width:1.5;stroke-linecap:butt;stroke-linejoin:miter;stroke-dasharray:none;stroke-opacity:0.6" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>x="300" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>y="30" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>id="text_line_ no-space object-id-number no-space " new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>opacity="1" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space>transform="translate(-41.390625, no-space position-y-value no-space )">open_angle_brackettspan new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space><character_space><character_space>x="300" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space><character_space><character_space>y="30" new-line
+<character_space><character_space><character_space><character_space><character_space><character_space><character_space><character_space><character_space>id="tspan659">
+----
+
+template-object-svg-part-2:
+</tspan></text>
+new-line
+----
