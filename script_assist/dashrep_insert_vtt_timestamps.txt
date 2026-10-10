@@ -1,0 +1,197 @@
+dashrep-language-yes:
+----
+name-of-program:
+insert_vtt_timestamps.txt
+----
+documentation-in-unused-phrase:
+Purpose: Get timestamps from the VTT (closed-caption) file, and
+insert them into a copy of the script as desired-timestamp directives.
+That script copy can be compared to the actual script using Meld
+(or equivalent), and manually the appropriate times can be inserted
+into the script, which controls when the keyframe transitions occur.
+----
+
+
+
+input-vtt-filename:
+output_captions_and_timing.vtt
+----
+
+path-to-script:
+/path/to/script/
+----
+
+script-file-name:
+script_animation_math_secrets.txt
+----
+
+output-file-name:
+output-copy-of-script-with-inserted-timestamp-directives.txt
+----
+
+
+
+start-here:
+ambee  delete-file  ambee  output-file-name  amenn  amenn
+ambee  do-initialization  amenn
+ambee  get-vtt-file-content  amenn
+
+ambee  generate-positions-of-delimiter  text-space-dash-dash-arrow-space  vtt-file-content  list-of-starting-character-positions-where-matches-occur  amenn
+
+ambee  copy-text  path-to-script  dashrep-path-prefix-for-file-reading  amenn
+ambee  linewise-read-from-file-and-use-handler  ambee  script-file-name  amenn  handle-one-line-of-script  amenn
+----
+
+
+
+do-initialization:
+ambee  copy-text  character-hyphen  text-three-dashes  amenn
+ambee  append-text-no-space  character-hyphen  text-three-dashes  amenn
+ambee  append-text-no-space  character-hyphen  text-three-dashes  amenn
+ambee  copy-and-replace  text-desired-timestamp-with-underscores  text-desired-timestamp  character-underscore  character-hyphen  amenn
+ambee  copy-text  character-space  text-space-dash-dash-arrow-space  amenn
+ambee  append-text-no-space  character-hyphen  text-space-dash-dash-arrow-space  amenn
+ambee  append-text-no-space  character-hyphen  text-space-dash-dash-arrow-space  amenn
+ambee  append-text-no-space  character-close-angle-bracket  text-space-dash-dash-arrow-space  amenn
+ambee  append-text-no-space  character-space  text-space-dash-dash-arrow-space  amenn
+ambee  clear-phrase  current-timestamp  amenn
+----
+
+
+
+get-vtt-file-content:
+ambee  copy-from-file-to-phrase  ambee  input-vtt-filename  amenn  vtt-file-content  amenn
+ambee  copy-and-replace  vtt-file-content  vtt-file-content  text-space-dash-dash-arrow-space  character-space  amenn
+ambee  copy-without-extra-spaces  vtt-file-content  vtt-file-content  amenn
+----
+
+
+
+handle-one-line-of-script:
+ambee  copy-text  linewise-input-line-from-file  line-from-script  amenn
+ambee  copy-from-phrase-append-to-file  line-from-script  ambee  output-file-name  amenn  amenn
+
+ambee  if-no-begin  ambee  yes-or-no-empty-phrase  line-from-script  amenn  amenn
+    ambee  handle-one-non-empty-line-of-script  amenn
+ambee  if-else  amenn
+    ambee  copy-text  string-no  yes-or-no-at-end-of-caption-directive  amenn
+    ambee  clear-phrase  current-timestamp  amenn
+ambee  if-end  amenn
+----
+
+
+
+handle-one-non-empty-line-of-script:
+ambee  get-timestamp-if-at-caption  amenn
+ambee  determine-yes-or-no-at-end-of-caption-directive  amenn
+ambee  insert-timestamp-directive-if-at-end-of-caption  amenn
+ambee  copy-text  string-no  yes-or-no-at-end-of-caption-directive  amenn
+----
+
+
+get-timestamp-if-at-caption:
+ambee  copy-without-extra-spaces  line-from-script  line-from-script-simplified  amenn
+ambee  put-into-phrase  character-position-if-found-caption-text  ambee  get-position-of-matching-text  line-from-script-simplified  vtt-file-content  amenn  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-same-two-words  greater  ambee  numeric-equal-greater-less-compare  ambee  character-position-if-found-caption-text  amenn  50  amenn  amenn amenn
+    ambee  copy-text  character-position-if-found-caption-text  ending-character-position  amenn
+    ambee  numeric-decrement  ending-character-position  amenn
+    ambee  copy-text  ending-character-position  starting-character-position  amenn
+    ambee  put-into-phrase  starting-character-position  ambee  numeric-minus  ambee  starting-character-position  amenn  25  amenn  amenn
+    ambee  put-into-phrase  ending-character-position  ambee  numeric-minus  ambee  ending-character-position  amenn  14  amenn  amenn
+    ambee  copy-characters-from-position-to-position  vtt-file-content  current-timestamp  ambee  starting-character-position  amenn  ambee  ending-character-position  amenn  amenn
+    ambee  copy-text  digit-zero  character-position-if-found-caption-text  amenn
+    ambee  remove-leading-trailing-zeros-colons-period  amenn
+ambee  if-end  amenn
+----
+
+
+
+remove-leading-trailing-zeros-colons-period:
+ambee  generate-counts-from-integer-to-integer  1  ambee  get-count-of-characters  current-timestamp  amenn  list-of-character-positions  amenn
+ambee  use-handler-with-each-word-in-phrase  remove-single-leading-trailing-zero-colon-period  list-of-character-positions  amenn
+----
+
+
+
+remove-single-leading-trailing-zero-colon-period:
+ambee  copy-characters-from-position-to-position  current-timestamp  first-character  1  1  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-same-two-phrase-definitions  digit-zero  first-character  amenn  amenn
+    ambee  copy-characters-from-position-to-position  current-timestamp  current-timestamp  2  99  amenn
+ambee  if-end  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-same-two-phrase-definitions  character-colon  first-character  amenn  amenn
+    ambee  copy-characters-from-position-to-position  current-timestamp  current-timestamp  2  99  amenn
+ambee  if-end  amenn
+
+ambee  put-into-phrase  length-of-current-timestamp  ambee  get-count-of-characters  current-timestamp  amenn  amenn
+ambee  copy-characters-from-position-to-position  current-timestamp  last-character  ambee  length-of-current-timestamp  amenn  ambee  length-of-current-timestamp  amenn  amenn
+ambee  copy-text  length-of-current-timestamp  length-of-current-timestamp-minus-one  amenn
+ambee  numeric-decrement length-of-current-timestamp-minus-one  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-same-two-phrase-definitions  digit-zero  last-character  amenn  amenn
+    ambee  copy-characters-from-position-to-position  current-timestamp  current-timestamp  1  ambee  length-of-current-timestamp-minus-one  amenn  amenn
+ambee  if-end  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-same-two-phrase-definitions  character-period  last-character  amenn  amenn
+    ambee  copy-characters-from-position-to-position  current-timestamp  current-timestamp  1  ambee  length-of-current-timestamp-minus-one  amenn  amenn
+ambee  if-end  amenn
+----
+
+
+
+determine-yes-or-no-at-end-of-caption-directive:
+ambee copy-text  string-no  yes-or-no-at-end-of-caption-directive  amenn
+ambee  put-into-phrase  character-position-or-zero-if-not-three-dashes  ambee  get-position-of-matching-text  text-three-dashes  line-from-script  amenn  amenn
+
+ambee  if-no-begin  ambee  yes-or-no-same-two-phrase-definitions  digit-zero  character-position-or-zero-if-not-three-dashes  amenn  amenn
+    ambee copy-text  string-yes  yes-or-no-at-end-of-caption-directive  amenn
+ambee  if-end  amenn
+----
+
+
+
+insert-timestamp-directive-if-at-end-of-caption:
+ambee  if-yes-begin  ambee  yes-or-no-empty-phrase  current-timestamp  amenn  amenn
+    ambee  copy-text  string-no  yes-or-no-at-end-of-caption-directive  amenn
+ambee  if-end  amenn
+
+ambee  if-yes-begin  ambee  yes-or-no-at-end-of-caption-directive  amenn  amenn
+    ambee  copy-text  character-newline  inserted-desired-timestamp  amenn
+    ambee  append-text-no-space  text-desired-timestamp  inserted-desired-timestamp  amenn
+    ambee  append-text  current-timestamp  inserted-desired-timestamp  amenn
+    ambee  append-text-no-space  character-newline  inserted-desired-timestamp  amenn
+    ambee  copy-from-phrase-append-to-file  inserted-desired-timestamp  ambee  output-file-name  amenn  amenn
+    ambee  clear-phrase  current-timestamp  amenn
+    ambee  copy-text  digit-zero  character-position-if-found-caption-text  amenn
+    ambee copy-text  string-no  yes-or-no-at-end-of-caption-directive  amenn
+ambee  if-end  amenn
+----
+
+
+
+text-desired-timestamp-with-underscores:
+desired_timestamp
+----
+character-close-angle-bracket:
+>
+----
+character-colon:
+:
+----
+character-period:
+.
+----
+string-yes:
+yes
+----
+string-no:
+no
+----
+digit-zero:
+0
+----
+digit-one:
+1
+----
