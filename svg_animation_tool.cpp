@@ -2387,11 +2387,9 @@ int main(int argc, char* argv[]) {
                 summary    << msg << "\n";
                 tokenIndex += 2; continue;
             }
-            if (lastSvgBFilename != "") {
-                globalRecentSvgFilename = lastSvgBFilename;
-            }
-            listKeyframesAndStartFrames.push_back(SavedKeyframeAndStartFrame{ globalFrame, globalRecentSvgFilename });
             const SvgFile& current = window.back();
+            globalRecentSvgFilename = current.filename;
+            listKeyframesAndStartFrames.push_back(SavedKeyframeAndStartFrame{ globalFrame, globalRecentSvgFilename });
             std::string frozenSvg;
             for (const auto& ln : current.lines) frozenSvg += ln + '\n';
             for (int freezeFrameNum = 0; freezeFrameNum < freezeN; ++freezeFrameNum) {
