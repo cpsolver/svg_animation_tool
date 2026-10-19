@@ -10,7 +10,8 @@
 namespace fs = std::filesystem;
 
 int main() {
-    const fs::path input_dir = "frames_with_captions_png";
+    const fs::path input_dir = "frames_png";
+//    const fs::path input_dir = "frames_with_captions_png";
     const fs::path output_dir = "renumbered_frames_png";
 
     fs::create_directories(output_dir);
